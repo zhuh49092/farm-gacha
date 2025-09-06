@@ -11,6 +11,8 @@
     radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);
     z-index:0;}
   .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
+
+  /* カード */
   .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
     width:min(92vw,540px);padding:14px;border-radius:18px;background:#101014;
     box-shadow:0 20px 60px rgba(0,0,0,.45);}
@@ -24,16 +26,23 @@
   .gc-btn{pointer-events:auto;border:0;border-radius:999px;cursor:pointer;background:#ffd166;color:#000;
     padding:clamp(10px,3vw,12px) clamp(16px,4.2vw,20px);font-size:clamp(14px,3.6vw,16px);
     box-shadow:0 8px 20px rgba(0,0,0,.35);}
+
+  /* ステッカー（画像が無ければ自動で非表示） */
   .gc-sticker{position:absolute;z-index:6;right:calc(50% - min(46vw,270px));
     top:calc(50% - min(46vw,270px)); transform:translate(40%,-40%) rotate(-12deg);
     width:clamp(90px,26vw,160px);height:auto;pointer-events:none;filter:drop-shadow(0 8px 24px rgba(0,0,0,.4));}
+
+  /* ローディング */
   .gc-loading{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;}
   .gc-spin{width:56px;height:56px;border:5px solid rgba(255,255,255,.15);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .gc-loading p{margin:0;font-size:clamp(14px,3.6vw,16px);opacity:.85;}
+
+  /* 紙吹雪 */
   .gc-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:10;}
   .gc-confetti i{position:absolute;width:8px;height:12px;border-radius:2px;opacity:.9;animation:fall 2.2s forwards ease-in;}
   @keyframes fall{0%{transform:translateY(-10vh) rotate(0deg);}100%{transform:translateY(110vh) rotate(540deg);opacity:0;}}
+
   @supports(padding:max(0px)){
     .gc-root{
       padding-left:env(safe-area-inset-left);
@@ -47,6 +56,8 @@
   @media (min-width:769px){
     .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
   }
+  /* 失敗表示 */
+  .gc-error{color:#fff;opacity:.9;text-align:center}
 </style>
 </head>
 <body>
@@ -54,15 +65,20 @@
   <div class="gc-bg"></div>
 
   <div class="gc-stage">
+    <!-- Loading -->
     <div id="gcLoading" class="gc-loading">
       <div class="gc-spin"></div>
       <p>ガチャを回転中…</p>
     </div>
 
+    <!-- Sticker -->
     <img id="gcSticker" class="gc-sticker" alt="sticker" style="display:none;">
 
+    <!-- Card -->
     <div id="gcCard" class="gc-card" style="display:none;">
-      <div class="gc-photo"><img id="gcPhoto" alt="post photo"></div>
+      <div class="gc-photo">
+        <img id="gcPhoto" alt="post photo" referrerpolicy="no-referrer">
+      </div>
       <div id="gcText" class="gc-text"></div>
       <div class="gc-meta">
         <div class="gc-tip">スクリーンショットを保存してね！</div>
@@ -77,41 +93,22 @@
 </div>
 
 <script>
-  /* -------- URL 参数 -------- */
+  /* ---------- URL params ---------- */
   const params = new URLSearchParams(location.search);
   const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
   const sid  = params.get('sid') || '';
 
-  /* 你的 Cloudflare Worker 代理地址（不带斜杠） */
-  const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
-
-  /* 请求 URL（携带 sid 以排除“自己那条”） */
-  const DATA_MAP = {
-    veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
-    dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
-    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
+  /* ============ 必ず自分の URL に置き換え ============ */
+  // Cloudflare Workers の URL（あなたの Web App を中継）
+  const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';   // ← ここはあなたの Workers URL
+  // 「もう一度投稿」ボタンの遷移先（Jotform の公開 URL）
+  const FORM_URL = {
+    veg:    'https://form.jotform.com/252481324905052',  // 例：veg
+    dairy:  'https://form.jotform.com/252484053770054',  // 例：dairy
+    staple: 'https://form.jotform.com/252483801287057'   // 例：staple
   };
 
-  /* 兜底假数据 */
-  const FALLBACK = {
-    veg: [
-      {"id":"v001","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23A3D977'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Carrot</text></svg>","text":"にんじんを見つけた！"},
-      {"id":"v002","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%2390D26D'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Cabbage</text></svg>","text":"キャベツが大きい〜"},
-      {"id":"v003","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23FF6B6B'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23fff' dy='.35em'>Tomato</text></svg>","text":"赤いトマトがおいしそう"}
-    ],
-    dairy: [
-      {"id":"d001","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23FFE28A'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Egg</text></svg>","text":"まんまるたまご！"},
-      {"id":"d002","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23FFFFFF'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Milk</text></svg>","text":"牛乳を飲んで元気いっぱい"},
-      {"id":"d003","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23F9C74F'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Cheese</text></svg>","text":"チーズのいい匂い〜"}
-    ],
-    staple: [
-      {"id":"s001","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23E0C097'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Bread</text></svg>","text":"おいしそうなパン！"},
-      {"id":"s002","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23F7F7F7'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Rice</text></svg>","text":"白いごはん大好き"},
-      {"id":"s003","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23F9844A'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Oil</text></svg>","text":"あぶらのびんを発見！"}
-    ]
-  };
-
-  /* 贴纸目录（可为空；不存在就自动隐藏） */
+  /* ---------- ステッカーの場所（画像は後で補充してOK） ---------- */
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
     dairy:  'assets/stickers/dairy/',
@@ -119,14 +116,7 @@
   };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* Jotform 表单链接（再投稿按钮） */
-  const FORM_URL = {
-    veg:    'https://form.jotform.com/252481324905052',
-    dairy:  'https://form.jotform.com/252484053770054',
-    staple: 'https://form.jotform.com/252483801287057'
-  };
-
-  /* -------- DOM -------- */
+  /* ---------- DOM ---------- */
   const loading  = document.getElementById('gcLoading');
   const card     = document.getElementById('gcCard');
   const photoImg = document.getElementById('gcPhoto');
@@ -135,25 +125,34 @@
   const ctnConf  = document.getElementById('gcConfetti');
   const btnAgain = document.getElementById('btnAgain');
 
+  /* utilities */
   const rand = arr => arr[Math.floor(Math.random()*arr.length)];
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-  async function tryFetchJson(url){
+  function apiUrl(s){
+    const base = `${API_BASE}?spot=${encodeURIComponent(s)}&mode=list`;
+    return sid ? `${base}&sid=${encodeURIComponent(sid)}&t=${Date.now()}` : `${base}&t=${Date.now()}`;
+  }
+
+  async function fetchList(){
     try{
-      const res = await fetch(url, {cache:'no-store'});
+      const res = await fetch(apiUrl(spot), {cache:'no-store'});
       if(!res.ok) throw new Error('HTTP '+res.status);
-      return await res.json();
-    }catch(e){
-      console.warn('[gacha] fetch failed, fallback to inline data:', url, e);
-      return null;
+      const data = await res.json();
+      // list でも one でも受けられるように整形
+      return Array.isArray(data) ? data : (data ? [data] : []);
+    }catch(err){
+      console.error('[gacha] fetch error:', err);
+      return [];
     }
   }
+
   function pickStickerUrl(){
     const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
     return dir + rand(DEFAULT_STICKERS);
   }
 
-  /* 纸屑 */
+  /* confetti */
   let confettiTimer=null;
   function spawnConfettiBurst(k=12){
     const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
@@ -174,41 +173,28 @@
     setTimeout(()=>{clearInterval(confettiTimer);confettiTimer=null;}, totalMs);
   }
 
+  function showError(msg){
+    loading.innerHTML =
+      `<div class="gc-spin" style="display:none"></div>
+       <p class="gc-error">${msg}</p>`;
+  }
+
   async function boot(){
-    await sleep(900);
+    await sleep(500); // 小さく演出
 
-    /* ====== 关键修复：正确拆包 {status,data} ====== */
-    const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
-
-    let list = null;
-    if (external) {
-      if (Array.isArray(external)) {
-        // 直接就是数组（后端 mode=list 且未包裹）
-        list = external;
-      } else if (Array.isArray(external.data)) {
-        // Worker 包裹：{ status:200, data:[…] }
-        list = external.data;
-      } else if (external.data && typeof external.data === 'object') {
-        // Worker 包裹 & 单条：{ status:200, data:{…} }
-        list = [external.data];
-      } else if (typeof external === 'object' && external.img) {
-        // 未包裹的单条：{img,text,id}
-        list = [external];
-      }
-    }
-
-    const finalList = (list && list.length) ? list : (FALLBACK[spot] || FALLBACK.veg);
-    if(!finalList || !finalList.length){
-      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
+    const list = await fetchList();
+    if(!list.length){
+      showError('読み込みに失敗しました。少し待ってリロードしてください。');
       return;
     }
 
-    const post = rand(finalList);
-    photoImg.src = post.img;           // ← 不再出现 undefined
+    const post = rand(list);
+    // 画像の“裂け”対策：cover + no-referrer（上で付与済）
+    photoImg.src = post.img;
     textEl.textContent = post.text || '';
 
-    // 贴纸（没有文件就隐藏，不影响主图）
-    sticker.onerror = () => { sticker.style.display='none'; };
+    // ステッカー（無ければ自動で消える）
+    sticker.onerror = ()=>{sticker.style.display='none';};
     sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
 
