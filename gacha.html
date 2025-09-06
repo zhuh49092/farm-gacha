@@ -56,7 +56,7 @@
   .gc-root{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
 
-  /* 桌面端收窄居中（与你 reward.html 的 50vw 思路一致） */
+  /* 桌面端收窄居中 */
   @media (min-width:769px){
     .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
   }
@@ -98,11 +98,16 @@
   const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
   const sid  = params.get('sid') || '';
 
-  /* -------- 外部数据（存在即用） -------- */
+  /* ====== 这里改为你的 Apps Script Web 应用地址（/exec 结尾） ====== */
+  const API_BASE = 'https://script.google.com/macros/s/AKfycbw6jSwk4ZvsHqI1PD_HaJtTNlgYPFAcqAXdzm6KCP8p26Yks72p6RBTZ6tcJ1K-rPTjbw/exec';
+
+  /* -------- 外部数据源：改为调用 Apps Script（同时传 sid 排除自己） -------- */
+  // 说明：保留 mode=list（一次取全，前端再随机）。若想省流量，可把 list 改为 one（后端直接随机），
+  // 并保留下方对“数组/对象”的兼容判断。
   const DATA_MAP = {
-    veg:    'data/posts_veg.json',
-    dairy:  'data/posts_dairy.json',
-    staple: 'data/posts_staple.json'
+    veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
+    dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
+    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
   };
 
   /* -------- 内置假数据（兜底） -------- */
@@ -124,7 +129,7 @@
     ]
   };
 
-  /* -------- 贴纸目录（这里先固定 5 张文件名，放到 assets/stickers/[spot]/ 下） -------- */
+  /* -------- 贴纸目录（本地图片） -------- */
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
     dairy:  'assets/stickers/dairy/',
@@ -132,11 +137,11 @@
   };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* -------- 再投稿按钮链接（替换为你的 Jotform） -------- */
+  /* -------- 再投稿按钮链接（替换为你的 Jotform 表单链接） -------- */
   const FORM_URL = {
-    veg:    'https://form.jotform.com/your_veg_form?spot=veg',
-    dairy:  'https://form.jotform.com/your_dairy_form?spot=dairy',
-    staple: 'https://form.jotform.com/your_staple_form?spot=staple'
+    veg:    'https://form.jotform.com/252481324905052',   // ← 你已发布的 veg 表单（示例）
+    dairy:  'https://form.jotform.com/252484053770054', // TODO: 换成你的 dairy 表单
+    staple: 'https://form.jotform.com/252483801287057' // TODO: 换成你的 staple 表单
   };
 
   /* -------- DOM -------- */
@@ -192,20 +197,32 @@
     // 模拟“转一转”
     await sleep(900);
 
-    // 先尝试读取外部 JSON（线上环境），失败就用内置数据（本地也能跑）
+    // 读取外部 JSON（Apps Script），失败就用内置假数据兜底
     const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
-    const list = (external && Array.isArray(external) && external.length) ? external : (FALLBACK[spot] || FALLBACK.veg);
 
-    if(!list || !list.length){
+    // 兼容：后端可能返回数组（mode=list）或对象（mode=one）
+    let list;
+    if (external && Array.isArray(external)) {
+      list = external;
+    } else if (external && typeof external === 'object') {
+      list = [external];
+    } else {
+      list = null;
+    }
+
+    const finalList = (list && list.length) ? list : (FALLBACK[spot] || FALLBACK.veg);
+    if(!finalList || !finalList.length){
       loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
       return;
     }
 
-    const post = rand(list);
+    const post = rand(finalList);
     photoImg.src = post.img;
     textEl.textContent = post.text || '';
 
-    sticker.src = pickStickerUrl(); // 如果没有放贴纸文件，这里即使 404 也不影响主流程
+    // 贴纸（若本地未放图，即使 404 也不影响主流程）
+    sticker.onerror = () => { sticker.style.display='none'; };
+    sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
 
     loading.style.display = 'none';
