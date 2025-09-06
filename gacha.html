@@ -7,13 +7,9 @@
 <style>
   html,body{margin:0;background:#000;overflow:hidden;}
   .gc-root{width:100vw;height:100vh;position:relative;background:#000;display:flex;overflow:hidden;}
-  /* 背景：用纯CSS渐变，避免外部图片依赖 */
   .gc-bg{position:absolute;inset:0;background:
-    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);
-    z-index:0;}
+    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);z-index:0;}
   .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
-
-  /* 卡片 */
   .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
     width:min(92vw,540px);padding:14px;border-radius:18px;background:#101014;
     box-shadow:0 20px 60px rgba(0,0,0,.45);}
@@ -27,24 +23,16 @@
   .gc-btn{pointer-events:auto;border:0;border-radius:999px;cursor:pointer;background:#ffd166;color:#000;
     padding:clamp(10px,3vw,12px) clamp(16px,4.2vw,20px);font-size:clamp(14px,3.6vw,16px);
     box-shadow:0 8px 20px rgba(0,0,0,.35);}
-
-  /* 贴纸 */
   .gc-sticker{position:absolute;z-index:6;right:calc(50% - min(46vw,270px));
     top:calc(50% - min(46vw,270px)); transform:translate(40%,-40%) rotate(-12deg);
     width:clamp(90px,26vw,160px);height:auto;pointer-events:none;filter:drop-shadow(0 8px 24px rgba(0,0,0,.4));}
-
-  /* 加载：CSS spinner，避免 gif 依赖 */
   .gc-loading{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;}
   .gc-spin{width:56px;height:56px;border:5px solid rgba(255,255,255,.15);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .gc-loading p{margin:0;font-size:clamp(14px,3.6vw,16px);opacity:.85;}
-
-  /* 五彩纸屑 */
   .gc-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:10;}
   .gc-confetti i{position:absolute;width:8px;height:12px;border-radius:2px;opacity:.9;animation:fall 2.2s forwards ease-in;}
   @keyframes fall{0%{transform:translateY(-10vh) rotate(0deg);}100%{transform:translateY(110vh) rotate(540deg);opacity:0;}}
-
-  /* 安全区 & 禁选 */
   @supports(padding:max(0px)){
     .gc-root{
       padding-left:env(safe-area-inset-left);
@@ -55,8 +43,6 @@
   }
   .gc-root{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
-
-  /* 桌面端收窄居中 */
   @media (min-width:769px){
     .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
   }
@@ -67,16 +53,13 @@
   <div class="gc-bg"></div>
 
   <div class="gc-stage">
-    <!-- 加载层 -->
     <div id="gcLoading" class="gc-loading">
       <div class="gc-spin"></div>
       <p>ガチャを回転中…</p>
     </div>
 
-    <!-- 贴纸 -->
     <img id="gcSticker" class="gc-sticker" alt="sticker" style="display:none;">
 
-    <!-- 卡片 -->
     <div id="gcCard" class="gc-card" style="display:none;">
       <div class="gc-photo"><img id="gcPhoto" alt="post photo"></div>
       <div id="gcText" class="gc-text"></div>
@@ -98,19 +81,17 @@
   const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
   const sid  = params.get('sid') || '';
 
-  /* ====== 这里改为你的 Apps Script Web 应用地址（/exec 结尾） ====== */
+  /* 你的 Cloudflare Worker 代理地址（它会转发到 Apps Script） */
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  /* -------- 外部数据源：改为调用 Apps Script（同时传 sid 排除自己） -------- */
-  // 说明：保留 mode=list（一次取全，前端再随机）。若想省流量，可把 list 改为 one（后端直接随机），
-  // 并保留下方对“数组/对象”的兼容判断。
+  /* 请求地址（带上 sid 以过滤“自己那条”） */
   const DATA_MAP = {
     veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
   };
 
-  /* -------- 内置假数据（兜底） -------- */
+  /* 内置兜底数据 */
   const FALLBACK = {
     veg: [
       {"id":"v001","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23A3D977'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Carrot</text></svg>","text":"にんじんを見つけた！"},
@@ -129,22 +110,18 @@
     ]
   };
 
-  /* -------- 贴纸目录（本地图片） -------- */
-  const STICKER_DIR = {
-    veg:    'assets/stickers/veg/',
-    dairy:  'assets/stickers/dairy/',
-    staple: 'assets/stickers/staple/'
-  };
+  /* 贴纸目录（如果本地没放图，404 也不影响主流程） */
+  const STICKER_DIR = { veg:'assets/stickers/veg/', dairy:'assets/stickers/dairy/', staple:'assets/stickers/staple/' };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* -------- 再投稿按钮链接（替换为你的 Jotform 表单链接） -------- */
+  /* 再投稿 */
   const FORM_URL = {
-    veg:    'https://form.jotform.com/252481324905052',   // ← 你已发布的 veg 表单（示例）
-    dairy:  'https://form.jotform.com/252484053770054', // TODO: 换成你的 dairy 表单
-    staple: 'https://form.jotform.com/252483801287057' // TODO: 换成你的 staple 表单
+    veg:    'https://form.jotform.com/252481324905052',
+    dairy:  'https://form.jotform.com/252484053770054',
+    staple: 'https://form.jotform.com/252483801287057'
   };
 
-  /* -------- DOM -------- */
+  /* DOM */
   const loading  = document.getElementById('gcLoading');
   const card     = document.getElementById('gcCard');
   const photoImg = document.getElementById('gcPhoto');
@@ -153,7 +130,6 @@
   const ctnConf  = document.getElementById('gcConfetti');
   const btnAgain = document.getElementById('btnAgain');
 
-  /* 工具 */
   const rand = arr => arr[Math.floor(Math.random()*arr.length)];
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
@@ -172,7 +148,6 @@
     return dir + rand(DEFAULT_STICKERS);
   }
 
-  /* 五彩纸屑 */
   let confettiTimer=null;
   function spawnConfettiBurst(k=12){
     const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
@@ -194,20 +169,21 @@
   }
 
   async function boot(){
-    // 模拟“转一转”
     await sleep(900);
 
-    // 读取外部 JSON（Apps Script），失败就用内置假数据兜底
-    const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
+    const url = DATA_MAP[spot] || DATA_MAP.veg;
+    const external = await tryFetchJson(url);
 
-    // 兼容：后端可能返回数组（mode=list）或对象（mode=one）
-    let list;
-    if (external && Array.isArray(external)) {
-      list = external;
-    } else if (external && typeof external === 'object') {
-      list = [external];
-    } else {
-      list = null;
+    // ★★★ 关键兼容：优先取 external.data，其次数组/单对象
+    let list = null;
+    if (external) {
+      if (Array.isArray(external.data)) {
+        list = external.data;                   // Worker 形如 {status:200, data:[...]}
+      } else if (Array.isArray(external)) {
+        list = external;                        // 直接数组
+      } else if (typeof external === 'object') {
+        list = [external];                      // 单对象
+      }
     }
 
     const finalList = (list && list.length) ? list : (FALLBACK[spot] || FALLBACK.veg);
@@ -220,7 +196,6 @@
     photoImg.src = post.img;
     textEl.textContent = post.text || '';
 
-    // 贴纸（若本地未放图，即使 404 也不影响主流程）
     sticker.onerror = () => { sticker.style.display='none'; };
     sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
