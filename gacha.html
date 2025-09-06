@@ -10,6 +10,7 @@
   .gc-bg{position:absolute;inset:0;background:
     radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);z-index:0;}
   .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
+
   .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
     width:min(92vw,540px);padding:14px;border-radius:18px;background:#101014;
     box-shadow:0 20px 60px rgba(0,0,0,.45);}
@@ -23,16 +24,20 @@
   .gc-btn{pointer-events:auto;border:0;border-radius:999px;cursor:pointer;background:#ffd166;color:#000;
     padding:clamp(10px,3vw,12px) clamp(16px,4.2vw,20px);font-size:clamp(14px,3.6vw,16px);
     box-shadow:0 8px 20px rgba(0,0,0,.35);}
+
   .gc-sticker{position:absolute;z-index:6;right:calc(50% - min(46vw,270px));
     top:calc(50% - min(46vw,270px)); transform:translate(40%,-40%) rotate(-12deg);
     width:clamp(90px,26vw,160px);height:auto;pointer-events:none;filter:drop-shadow(0 8px 24px rgba(0,0,0,.4));}
+
   .gc-loading{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;}
   .gc-spin{width:56px;height:56px;border:5px solid rgba(255,255,255,.15);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .gc-loading p{margin:0;font-size:clamp(14px,3.6vw,16px);opacity:.85;}
+
   .gc-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:10;}
   .gc-confetti i{position:absolute;width:8px;height:12px;border-radius:2px;opacity:.9;animation:fall 2.2s forwards ease-in;}
   @keyframes fall{0%{transform:translateY(-10vh) rotate(0deg);}100%{transform:translateY(110vh) rotate(540deg);opacity:0;}}
+
   @supports(padding:max(0px)){
     .gc-root{
       padding-left:env(safe-area-inset-left);
@@ -43,6 +48,7 @@
   }
   .gc-root{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+
   @media (min-width:769px){
     .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
   }
@@ -84,14 +90,14 @@
   /* 你的 Cloudflare Worker 反代地址（它会转发到 Apps Script /exec） */
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  /* Apps Script (通过 Worker 访问) */
+  /* 请求 URL（保留 mode=list；必要时你也可把 list 改为 one） */
   const DATA_MAP = {
     veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
   };
 
-  /* 贴纸目录（本地图片，不影响主流程，404 会自动隐藏） */
+  /* 贴纸目录（本地图片，缺图不影响主流程） */
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
     dairy:  'assets/stickers/dairy/',
@@ -99,7 +105,7 @@
   };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* 再投稿按钮链接（替换为你的 Jotform 表单链接） */
+  /* Jotform 表单链接（点击再投稿） */
   const FORM_URL = {
     veg:    'https://form.jotform.com/252481324905052',
     dairy:  'https://form.jotform.com/252484053770054',
@@ -119,18 +125,13 @@
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   async function tryFetchJson(url){
-    try{
-      const res = await fetch(url, {cache:'no-store'});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      return await res.json();
-    }catch(e){
-      console.warn('[gacha] fetch failed:', url, e);
-      return null;
-    }
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return await res.json();
   }
   function pickStickerUrl(){
     const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
-    return dir + rand(DEFAULT_STICKERS);
+    return dir + DEFAULT_STICKERS[Math.floor(Math.random()*DEFAULT_STICKERS.length)];
   }
 
   /* 五彩纸屑 */
@@ -155,40 +156,43 @@
   }
 
   async function boot(){
-    await sleep(600); // 小小的“转一转”动效等待
+    await sleep(600); // 小小的加载动效
 
     // 拉取 Apps Script 数据
-    const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
+    let external;
+    try{
+      external = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
+    }catch(err){
+      console.error('[gacha] fetch error:', err);
+      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
+      return;
+    }
 
-    // **兼容两种返回：Array 或 {status:200,data:[…]}（你当前是后一种）**
+    // 兼容两种返回形态：数组 或 {status:200, data:[...]}
     let list = null;
     if (external && Array.isArray(external)) {
       list = external;
-    } else if (external && typeof external === 'object') {
-      if (Array.isArray(external.data)) {
-        list = external.data;       // ← 关键解包
-      } else {
-        list = [external];          // 兼容 mode=one
-      }
+    } else if (external && typeof external === 'object' && Array.isArray(external.data)) {
+      list = external.data;
     }
 
-    if(!list || !list.length){
+    if (!list || !list.length) {
       loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
       return;
     }
 
     const post = rand(list);
-    photoImg.src = post.img;            // Jotform 直链
+    photoImg.src = post.img || '';
     textEl.textContent = post.text || '';
 
-    // 贴纸（缺图不影响主流程）
+    // 贴纸：如果文件夹里暂时没有图片，404 会触发 onerror 隐藏
     sticker.onerror = () => { sticker.style.display='none'; };
     sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
 
     loading.style.display = 'none';
     card.style.display = 'flex';
-    startConfetti(2600, 160, 14);
+    startConfetti(2600,160,14);
   }
 
   btnAgain.addEventListener('click', ()=>{
