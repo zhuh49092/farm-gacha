@@ -84,13 +84,14 @@
   /* 你的 Cloudflare Worker 反代地址（它会转发到 Apps Script /exec） */
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  /* 拉取地址（带 sid 让后端排除自己） */
-  const DATA_URL =
-    `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list` +
-    (sid ? `&sid=${encodeURIComponent(sid)}` : '') +
-    `&t=${Date.now()}`;
+  /* Apps Script (通过 Worker 访问) */
+  const DATA_MAP = {
+    veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
+    dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
+    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
+  };
 
-  /* 贴纸目录（本地资源，缺图则自动隐藏） */
+  /* 贴纸目录（本地图片，不影响主流程，404 会自动隐藏） */
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
     dairy:  'assets/stickers/dairy/',
@@ -98,7 +99,7 @@
   };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* 再投稿按钮（你的 Jotform 表单） */
+  /* 再投稿按钮链接（替换为你的 Jotform 表单链接） */
   const FORM_URL = {
     veg:    'https://form.jotform.com/252481324905052',
     dairy:  'https://form.jotform.com/252484053770054',
@@ -117,29 +118,22 @@
   const rand = arr => arr[Math.floor(Math.random()*arr.length)];
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-  async function getList(){
-    const res = await fetch(DATA_URL, {cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const json = await res.json();
-
-    // 兼容两种返回：
-    // A) [ {id,img,text}, ... ]
-    // B) { status:200, data:[ {...}, ... ] }
-    if (Array.isArray(json)) return json;
-    if (json && Array.isArray(json.data)) return json.data;
-
-    // 如果是单条对象 {id,img,text}（后端改成 mode=one 时）
-    if (json && typeof json === 'object' && json.img) return [json];
-
-    throw new Error('Unexpected response shape');
+  async function tryFetchJson(url){
+    try{
+      const res = await fetch(url, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.json();
+    }catch(e){
+      console.warn('[gacha] fetch failed:', url, e);
+      return null;
+    }
   }
-
   function pickStickerUrl(){
     const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
     return dir + rand(DEFAULT_STICKERS);
   }
 
-  // 五彩纸屑
+  /* 五彩纸屑 */
   let confettiTimer=null;
   function spawnConfettiBurst(k=12){
     const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
@@ -161,27 +155,40 @@
   }
 
   async function boot(){
-    try{
-      await sleep(600);
-      const list = await getList();
-      if(!list || !list.length) throw new Error('Empty list');
+    await sleep(600); // 小小的“转一转”动效等待
 
-      const post = rand(list);
-      photoImg.src = post.img || '';
-      textEl.textContent = post.text || '';
+    // 拉取 Apps Script 数据
+    const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
 
-      // 贴纸（没有就隐藏，不影响主流程）
-      sticker.onerror = () => { sticker.style.display='none'; };
-      sticker.src = pickStickerUrl();
-      sticker.style.display = 'block';
-
-      loading.style.display = 'none';
-      card.style.display = 'flex';
-      startConfetti(2600, 160, 14);
-    }catch(err){
-      console.error('[gacha] failed:', err);
-      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
+    // **兼容两种返回：Array 或 {status:200,data:[…]}（你当前是后一种）**
+    let list = null;
+    if (external && Array.isArray(external)) {
+      list = external;
+    } else if (external && typeof external === 'object') {
+      if (Array.isArray(external.data)) {
+        list = external.data;       // ← 关键解包
+      } else {
+        list = [external];          // 兼容 mode=one
+      }
     }
+
+    if(!list || !list.length){
+      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
+      return;
+    }
+
+    const post = rand(list);
+    photoImg.src = post.img;            // Jotform 直链
+    textEl.textContent = post.text || '';
+
+    // 贴纸（缺图不影响主流程）
+    sticker.onerror = () => { sticker.style.display='none'; };
+    sticker.src = pickStickerUrl();
+    sticker.style.display = 'block';
+
+    loading.style.display = 'none';
+    card.style.display = 'flex';
+    startConfetti(2600, 160, 14);
   }
 
   btnAgain.addEventListener('click', ()=>{
