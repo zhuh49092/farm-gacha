@@ -1,0 +1,17 @@
+[
+  {
+    "id": "d001",
+    "img": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%' height='100%' fill='%23FFE28A'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Egg</text></svg>",
+    "text": "まんまるたまご！"
+  },
+  {
+    "id": "d002",
+    "img": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%' height='100%' fill='%23FFFFFF'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Milk</text></svg>",
+    "text": "牛乳を飲んで元気いっぱい"
+  },
+  {
+    "id": "d003",
+    "img": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%' height='100%' fill='%23F9C74F'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Cheese</text></svg>",
+    "text": "チーズのいい匂い〜"
+  }
+]
