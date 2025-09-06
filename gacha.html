@@ -8,7 +8,8 @@
   html,body{margin:0;background:#000;overflow:hidden;}
   .gc-root{width:100vw;height:100vh;position:relative;background:#000;display:flex;overflow:hidden;}
   .gc-bg{position:absolute;inset:0;background:
-    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);z-index:0;}
+    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);
+    z-index:0;}
   .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
 
   .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
@@ -48,7 +49,6 @@
   }
   .gc-root{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
-
   @media (min-width:769px){
     .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
   }
@@ -82,22 +82,18 @@
 </div>
 
 <script>
-  /* -------- URL 参数 -------- */
   const params = new URLSearchParams(location.search);
-  const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
+  const spot = (params.get('spot') || 'veg').toLowerCase();
   const sid  = params.get('sid') || '';
 
-  /* 你的 Cloudflare Worker 反代地址（它会转发到 Apps Script /exec） */
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  /* 请求 URL（保留 mode=list；必要时你也可把 list 改为 one） */
   const DATA_MAP = {
     veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
   };
 
-  /* 贴纸目录（本地图片，缺图不影响主流程） */
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
     dairy:  'assets/stickers/dairy/',
@@ -105,14 +101,12 @@
   };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* Jotform 表单链接（点击再投稿） */
   const FORM_URL = {
     veg:    'https://form.jotform.com/252481324905052',
     dairy:  'https://form.jotform.com/252484053770054',
     staple: 'https://form.jotform.com/252483801287057'
   };
 
-  /* -------- DOM -------- */
   const loading  = document.getElementById('gcLoading');
   const card     = document.getElementById('gcCard');
   const photoImg = document.getElementById('gcPhoto');
@@ -125,16 +119,15 @@
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   async function tryFetchJson(url){
-    const res = await fetch(url, {cache:'no-store'});
+    const res = await fetch(url,{cache:'no-store'});
     if(!res.ok) throw new Error('HTTP '+res.status);
     return await res.json();
   }
   function pickStickerUrl(){
     const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
-    return dir + DEFAULT_STICKERS[Math.floor(Math.random()*DEFAULT_STICKERS.length)];
+    return dir + rand(DEFAULT_STICKERS);
   }
 
-  /* 五彩纸屑 */
   let confettiTimer=null;
   function spawnConfettiBurst(k=12){
     const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
@@ -156,19 +149,11 @@
   }
 
   async function boot(){
-    await sleep(600); // 小小的加载动效
+    await sleep(600);
 
-    // 拉取 Apps Script 数据
-    let external;
-    try{
-      external = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
-    }catch(err){
-      console.error('[gacha] fetch error:', err);
-      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
-      return;
-    }
+    const external = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
 
-    // 兼容两种返回形态：数组 或 {status:200, data:[...]}
+    // === 关键修改：兼容 {status:200,data:[...]} 格式 ===
     let list = null;
     if (external && Array.isArray(external)) {
       list = external;
@@ -176,23 +161,22 @@
       list = external.data;
     }
 
-    if (!list || !list.length) {
+    if(!list || !list.length){
       loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
       return;
     }
 
     const post = rand(list);
-    photoImg.src = post.img || '';
+    photoImg.src = post.img;
     textEl.textContent = post.text || '';
 
-    // 贴纸：如果文件夹里暂时没有图片，404 会触发 onerror 隐藏
     sticker.onerror = () => { sticker.style.display='none'; };
     sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
 
     loading.style.display = 'none';
     card.style.display = 'flex';
-    startConfetti(2600,160,14);
+    startConfetti(2600, 160, 14);
   }
 
   btnAgain.addEventListener('click', ()=>{
