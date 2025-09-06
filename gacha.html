@@ -61,7 +61,7 @@
   <div class="gc-stage">
     <div id="gcLoading" class="gc-loading">
       <div class="gc-spin"></div>
-      <p>ガチャを回転中…</p>
+      <p id="gcMsg">ガチャを回転中…</p>
     </div>
 
     <img id="gcSticker" class="gc-sticker" alt="sticker" style="display:none;">
@@ -108,6 +108,7 @@
   };
 
   const loading  = document.getElementById('gcLoading');
+  const msgEl    = document.getElementById('gcMsg');
   const card     = document.getElementById('gcCard');
   const photoImg = document.getElementById('gcPhoto');
   const textEl   = document.getElementById('gcText');
@@ -120,9 +121,62 @@
 
   async function tryFetchJson(url){
     const res = await fetch(url,{cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    return await res.json();
+    const text = await res.text();
+    if(!res.ok){
+      console.error('[gacha] fetch error', res.status, text);
+      throw new Error('HTTP '+res.status);
+    }
+    // 可能返回 text/plain，这里手动解析
+    try{
+      return JSON.parse(text);
+    }catch(e){
+      // 部分情况下 Apps Script/Worker 可能把 JSON 又包成字符串
+      // 再尝试一层
+      try{
+        const maybe = JSON.parse(text);
+        if(typeof maybe === 'string') return JSON.parse(maybe);
+        return maybe;
+      }catch(_){
+        console.error('[gacha] JSON.parse failed, raw text =>', text);
+        throw e;
+      }
+    }
   }
+
+  // 统一把各种“外层/字符串/嵌套”都解成数组
+  function unwrapList(payload){
+    console.log('[gacha] raw response →', payload);
+    if(Array.isArray(payload)) return payload;
+
+    if(payload && typeof payload === 'object'){
+      // 最常见：{ status:200, data:[...] }
+      if(Array.isArray(payload.data)) return payload.data;
+
+      // 有时 data 是字符串
+      if(typeof payload.data === 'string'){
+        try{
+          const d = JSON.parse(payload.data);
+          if(Array.isArray(d)) return d;
+          if(d && Array.isArray(d.data)) return d.data;
+        }catch(e){}
+      }
+
+      // 某些库会用 {result:[...]} 或 {items:[...]}
+      if(Array.isArray(payload.result)) return payload.result;
+      if(Array.isArray(payload.items))  return payload.items;
+    }
+
+    // 顶层是字符串的情况
+    if(typeof payload === 'string'){
+      try{
+        const d = JSON.parse(payload);
+        return unwrapList(d); // 递归再解一次
+      }catch(e){}
+    }
+
+    return null;
+  }
+
   function pickStickerUrl(){
     const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
     return dir + rand(DEFAULT_STICKERS);
@@ -149,34 +203,39 @@
   }
 
   async function boot(){
-    await sleep(600);
+    try{
+      await sleep(300);
 
-    const external = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
+      const raw = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
+      const list = unwrapList(raw);
 
-    // === 关键修改：兼容 {status:200,data:[...]} 格式 ===
-    let list = null;
-    if (external && Array.isArray(external)) {
-      list = external;
-    } else if (external && typeof external === 'object' && Array.isArray(external.data)) {
-      list = external.data;
+      if(!list || !list.length){
+        msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
+        console.warn('[gacha] unexpected response shape, list empty');
+        return;
+      }
+
+      const post = rand(list);
+      if(!post || !post.img){
+        msgEl.textContent = '投稿データが不正です。';
+        console.warn('[gacha] bad post item', post);
+        return;
+      }
+
+      photoImg.src = post.img;
+      textEl.textContent = post.text || '';
+
+      sticker.onerror = () => { sticker.style.display='none'; };
+      sticker.src = pickStickerUrl();
+      sticker.style.display = 'block';
+
+      loading.style.display = 'none';
+      card.style.display = 'flex';
+      startConfetti(2600, 160, 14);
+    }catch(err){
+      console.error('[gacha] failed:', err);
+      msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
     }
-
-    if(!list || !list.length){
-      loading.querySelector('p').textContent = '読み込みに失敗しました。再読み込みしてください。';
-      return;
-    }
-
-    const post = rand(list);
-    photoImg.src = post.img;
-    textEl.textContent = post.text || '';
-
-    sticker.onerror = () => { sticker.style.display='none'; };
-    sticker.src = pickStickerUrl();
-    sticker.style.display = 'block';
-
-    loading.style.display = 'none';
-    card.style.display = 'flex';
-    startConfetti(2600, 160, 14);
   }
 
   btnAgain.addEventListener('click', ()=>{
