@@ -67,7 +67,7 @@
     <img id="gcSticker" class="gc-sticker" alt="sticker" style="display:none;">
 
     <div id="gcCard" class="gc-card" style="display:none;">
-      <div class="gc-photo"><img id="gcPhoto" alt="post photo"></div>
+      <div class="gc-photo"><img id="gcPhoto" alt="post photo" referrerpolicy="no-referrer"></div>
       <div id="gcText" class="gc-text"></div>
       <div class="gc-meta">
         <div class="gc-tip">スクリーンショットを保存してね！</div>
@@ -86,13 +86,12 @@
   const spot = (params.get('spot') || 'veg').toLowerCase();
   const sid  = params.get('sid') || '';
 
+  // 你的 Worker 根地址
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  const DATA_MAP = {
-    veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
-    dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
-    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
-  };
+  // 首选：带 sid；回退：不带 sid
+  const urlWithSid   = s => `${API_BASE}?spot=${s}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`;
+  const urlWithoutSid= s => `${API_BASE}?spot=${s}&mode=list&t=${Date.now()}`;
 
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
@@ -126,12 +125,9 @@
       console.error('[gacha] fetch error', res.status, text);
       throw new Error('HTTP '+res.status);
     }
-    // 可能返回 text/plain，这里手动解析
     try{
       return JSON.parse(text);
     }catch(e){
-      // 部分情况下 Apps Script/Worker 可能把 JSON 又包成字符串
-      // 再尝试一层
       try{
         const maybe = JSON.parse(text);
         if(typeof maybe === 'string') return JSON.parse(maybe);
@@ -143,16 +139,11 @@
     }
   }
 
-  // 统一把各种“外层/字符串/嵌套”都解成数组
   function unwrapList(payload){
     console.log('[gacha] raw response →', payload);
     if(Array.isArray(payload)) return payload;
-
     if(payload && typeof payload === 'object'){
-      // 最常见：{ status:200, data:[...] }
       if(Array.isArray(payload.data)) return payload.data;
-
-      // 有时 data 是字符串
       if(typeof payload.data === 'string'){
         try{
           const d = JSON.parse(payload.data);
@@ -160,20 +151,14 @@
           if(d && Array.isArray(d.data)) return d.data;
         }catch(e){}
       }
-
-      // 某些库会用 {result:[...]} 或 {items:[...]}
       if(Array.isArray(payload.result)) return payload.result;
       if(Array.isArray(payload.items))  return payload.items;
+      // 明确看到 {status:400,...} 时返回空，让上层触发回退
+      if(payload.status && payload.status !== 200) return [];
     }
-
-    // 顶层是字符串的情况
     if(typeof payload === 'string'){
-      try{
-        const d = JSON.parse(payload);
-        return unwrapList(d); // 递归再解一次
-      }catch(e){}
+      try{ return unwrapList(JSON.parse(payload)); }catch(e){}
     }
-
     return null;
   }
 
@@ -202,12 +187,26 @@
     setTimeout(()=>{clearInterval(confettiTimer);confettiTimer=null;}, totalMs);
   }
 
+  async function getListFor(s){
+    // ① 先带 sid
+    try{
+      const raw1 = await tryFetchJson(urlWithSid(s));
+      const list1 = unwrapList(raw1);
+      if(list1 && list1.length) return list1;
+      console.warn('[gacha] empty or error with sid -> fallback without sid');
+    }catch(e){
+      console.warn('[gacha] fetch failed with sid -> fallback', e);
+    }
+    // ② 回退：不带 sid
+    const raw2 = await tryFetchJson(urlWithoutSid(s));
+    const list2 = unwrapList(raw2);
+    return Array.isArray(list2) ? list2 : [];
+  }
+
   async function boot(){
     try{
-      await sleep(300);
-
-      const raw = await tryFetchJson(DATA_MAP[spot] || DATA_MAP.veg);
-      const list = unwrapList(raw);
+      await sleep(150);
+      const list = await getListFor(spot);
 
       if(!list || !list.length){
         msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
@@ -222,7 +221,7 @@
         return;
       }
 
-      photoImg.src = post.img;
+      photoImg.src = post.img;          // Jotform 画像直リンク
       textEl.textContent = post.text || '';
 
       sticker.onerror = () => { sticker.style.display='none'; };
