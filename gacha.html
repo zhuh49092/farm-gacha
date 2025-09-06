@@ -8,7 +8,8 @@
   html,body{margin:0;background:#000;overflow:hidden;}
   .gc-root{width:100vw;height:100vh;position:relative;background:#000;display:flex;overflow:hidden;}
   .gc-bg{position:absolute;inset:0;background:
-    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);z-index:0;}
+    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);
+    z-index:0;}
   .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
   .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
     width:min(92vw,540px);padding:14px;border-radius:18px;background:#101014;
@@ -81,17 +82,17 @@
   const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
   const sid  = params.get('sid') || '';
 
-  /* 你的 Cloudflare Worker 代理地址（它会转发到 Apps Script） */
+  /* 你的 Cloudflare Worker 代理地址（不带斜杠） */
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-  /* 请求地址（带上 sid 以过滤“自己那条”） */
+  /* 请求 URL（携带 sid 以排除“自己那条”） */
   const DATA_MAP = {
     veg:    `${API_BASE}?spot=veg&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
     dairy:  `${API_BASE}?spot=dairy&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
-    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`
+    staple: `${API_BASE}?spot=staple&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`,
   };
 
-  /* 内置兜底数据 */
+  /* 兜底假数据 */
   const FALLBACK = {
     veg: [
       {"id":"v001","img":"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='100%25' height='100%25' fill='%23A3D977'/><text x='50%25' y='50%25' font-size='64' text-anchor='middle' fill='%23000' dy='.35em'>Carrot</text></svg>","text":"にんじんを見つけた！"},
@@ -110,18 +111,22 @@
     ]
   };
 
-  /* 贴纸目录（如果本地没放图，404 也不影响主流程） */
-  const STICKER_DIR = { veg:'assets/stickers/veg/', dairy:'assets/stickers/dairy/', staple:'assets/stickers/staple/' };
+  /* 贴纸目录（可为空；不存在就自动隐藏） */
+  const STICKER_DIR = {
+    veg:    'assets/stickers/veg/',
+    dairy:  'assets/stickers/dairy/',
+    staple: 'assets/stickers/staple/'
+  };
   const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
 
-  /* 再投稿 */
+  /* Jotform 表单链接（再投稿按钮） */
   const FORM_URL = {
     veg:    'https://form.jotform.com/252481324905052',
     dairy:  'https://form.jotform.com/252484053770054',
     staple: 'https://form.jotform.com/252483801287057'
   };
 
-  /* DOM */
+  /* -------- DOM -------- */
   const loading  = document.getElementById('gcLoading');
   const card     = document.getElementById('gcCard');
   const photoImg = document.getElementById('gcPhoto');
@@ -148,6 +153,7 @@
     return dir + rand(DEFAULT_STICKERS);
   }
 
+  /* 纸屑 */
   let confettiTimer=null;
   function spawnConfettiBurst(k=12){
     const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
@@ -171,18 +177,23 @@
   async function boot(){
     await sleep(900);
 
-    const url = DATA_MAP[spot] || DATA_MAP.veg;
-    const external = await tryFetchJson(url);
+    /* ====== 关键修复：正确拆包 {status,data} ====== */
+    const external = await tryFetchJson((DATA_MAP[spot] || DATA_MAP.veg));
 
-    // ★★★ 关键兼容：优先取 external.data，其次数组/单对象
     let list = null;
     if (external) {
-      if (Array.isArray(external.data)) {
-        list = external.data;                   // Worker 形如 {status:200, data:[...]}
-      } else if (Array.isArray(external)) {
-        list = external;                        // 直接数组
-      } else if (typeof external === 'object') {
-        list = [external];                      // 单对象
+      if (Array.isArray(external)) {
+        // 直接就是数组（后端 mode=list 且未包裹）
+        list = external;
+      } else if (Array.isArray(external.data)) {
+        // Worker 包裹：{ status:200, data:[…] }
+        list = external.data;
+      } else if (external.data && typeof external.data === 'object') {
+        // Worker 包裹 & 单条：{ status:200, data:{…} }
+        list = [external.data];
+      } else if (typeof external === 'object' && external.img) {
+        // 未包裹的单条：{img,text,id}
+        list = [external];
       }
     }
 
@@ -193,9 +204,10 @@
     }
 
     const post = rand(finalList);
-    photoImg.src = post.img;
+    photoImg.src = post.img;           // ← 不再出现 undefined
     textEl.textContent = post.text || '';
 
+    // 贴纸（没有文件就隐藏，不影响主图）
     sticker.onerror = () => { sticker.style.display='none'; };
     sticker.src = pickStickerUrl();
     sticker.style.display = 'block';
