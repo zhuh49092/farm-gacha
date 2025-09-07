@@ -32,7 +32,7 @@
   </div>
 
   <script>
-    // 你的 Worker 根地址
+    // ==== 你的 Worker 根地址（不要带末尾斜杠）====
     const WORKER_ORIGIN = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
     const API_BASE = WORKER_ORIGIN;
 
@@ -49,21 +49,30 @@
     function clearStatus(){ $status.textContent='' }
     function toast(t){ $status.textContent=t }
 
-    // 关键：通过 /img?u=&key= 让 Worker 持久化到 R2
-    function cachedImg(url, key){ 
+    // 通过 Worker → R2 的缓存图片 URL
+    function cachedImg(url, key){
       const p = new URLSearchParams({ u: url });
       if (key) p.set('key', key);
       return `${WORKER_ORIGIN}/img?${p.toString()}`;
     }
 
+    // 安全解析 JSON：失败时把原文打印出来
+    function tryParseJson(text){
+      try { return { ok:true, data: JSON.parse(text) } }
+      catch(e){ console.warn('[gacha] raw response -->', text); return { ok:false, error:e } }
+    }
+
     async function fetchList(){
       const url = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list${sid?`&sid=${encodeURIComponent(sid)}`:''}`;
-      const r = await fetch(url, { cache: 'no-store' });
-      const j = await r.json();
-      if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('bad json');
+      const r = await fetch(url, { cache: 'no-store', headers: { 'accept': 'application/json' } });
+      const text = await r.text();
+      const parsed = tryParseJson(text);
+      if (!parsed.ok) throw new Error('bad json');
+      const j = parsed.data;
+
+      if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('bad envelope');
       if (j.status !== 200) throw new Error(`upstream ${j.status}: ${JSON.stringify(j.data)}`);
       const arr = Array.isArray(j.data) ? j.data : [];
-      // 双保险再过滤自己
       return sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
     }
 
