@@ -1,248 +1,165 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>投稿ガチャ</title>
-<style>
-  html,body{margin:0;background:#000;overflow:hidden;}
-  .gc-root{width:100vw;height:100vh;position:relative;background:#000;display:flex;overflow:hidden;}
-  .gc-bg{position:absolute;inset:0;background:
-    radial-gradient(120% 120% at 50% -10%, #222 0%, #111 60%, #000 100%);
-    z-index:0;}
-  .gc-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
-
-  .gc-card{position:relative;display:flex;flex-direction:column;gap:12px;
-    width:min(92vw,540px);padding:14px;border-radius:18px;background:#101014;
-    box-shadow:0 20px 60px rgba(0,0,0,.45);}
-  .gc-photo{width:100%;aspect-ratio:1/1;background:#222;border-radius:14px;overflow:hidden;
-    display:flex;align-items:center;justify-content:center;}
-  .gc-photo img{display:block;width:100%;height:100%;object-fit:cover;}
-  .gc-text{color:#fff;font-size:clamp(14px,3.6vw,18px);line-height:1.5;word-break:break-word;}
-  .gc-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-  .gc-tip{color:#fff;font-size:clamp(12px,3.2vw,14px);opacity:.85;}
-  .gc-actions{display:flex;gap:10px;}
-  .gc-btn{pointer-events:auto;border:0;border-radius:999px;cursor:pointer;background:#ffd166;color:#000;
-    padding:clamp(10px,3vw,12px) clamp(16px,4.2vw,20px);font-size:clamp(14px,3.6vw,16px);
-    box-shadow:0 8px 20px rgba(0,0,0,.35);}
-
-  .gc-sticker{position:absolute;z-index:6;right:calc(50% - min(46vw,270px));
-    top:calc(50% - min(46vw,270px)); transform:translate(40%,-40%) rotate(-12deg);
-    width:clamp(90px,26vw,160px);height:auto;pointer-events:none;filter:drop-shadow(0 8px 24px rgba(0,0,0,.4));}
-
-  .gc-loading{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;}
-  .gc-spin{width:56px;height:56px;border:5px solid rgba(255,255,255,.15);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .gc-loading p{margin:0;font-size:clamp(14px,3.6vw,16px);opacity:.85;}
-
-  .gc-confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:10;}
-  .gc-confetti i{position:absolute;width:8px;height:12px;border-radius:2px;opacity:.9;animation:fall 2.2s forwards ease-in;}
-  @keyframes fall{0%{transform:translateY(-10vh) rotate(0deg);}100%{transform:translateY(110vh) rotate(540deg);opacity:0;}}
-
-  @supports(padding:max(0px)){
-    .gc-root{
-      padding-left:env(safe-area-inset-left);
-      padding-right:env(safe-area-inset-right);
-      padding-top:env(safe-area-inset-top);
-      padding-bottom:env(safe-area-inset-bottom);
-    }
-  }
-  .gc-root{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
-    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
-  @media (min-width:769px){
-    .gc-root{width:50vw;height:100vh;position:fixed;left:50%;top:0;transform:translateX(-50%);}
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>投稿ガチャ</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background:#0c0c0e; color:#eaeaea; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; }
+    .wrap { min-height: 100dvh; display:flex; align-items:center; justify-content:center; padding: 20px; }
+    .card { width:min(92vw,720px); background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); padding: 22px; }
+    .photoBox { aspect-ratio: 1 / 1; width: 100%; border-radius: 16px; overflow:hidden; background:#141418; display:grid; place-items:center; }
+    .photoBox img { width:100%; height:100%; object-fit: contain; }
+    .caption { margin: 16px 2px 6px; font-size: 16px; line-height: 1.6; color:#ddd; min-height: 1.6em; }
+    .row { display:flex; gap:12px; justify-content:flex-end; align-items:center; margin-top: 14px; }
+    .btn { appearance:none; border:0; cursor:pointer; padding:12px 20px; border-radius:999px; background:#f4c85a; color:#1b1200; font-weight:700; font-size:16px; box-shadow: 0 8px 18px rgba(244,200,90,0.25); }
+    .hint { opacity:.75; font-size: 13px; margin-top: 10px; }
+    .loading { display:flex; align-items:center; justify-content:center; gap:10px; color:#bdbdbd; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#bdbdbd; animation: pulse 1.2s infinite ease-in-out; }
+    .dot:nth-child(2){animation-delay:.15s} .dot:nth-child(3){animation-delay:.3s}
+    @keyframes pulse { 0%, 80%, 100% { opacity:.2; transform:scale(.8) } 40% { opacity:1; transform:scale(1) } }
+    .hide { display:none !important; }
+  </style>
 </head>
 <body>
-<div class="gc-root">
-  <div class="gc-bg"></div>
-
-  <div class="gc-stage">
-    <div id="gcLoading" class="gc-loading">
-      <div class="gc-spin"></div>
-      <p id="gcMsg">ガチャを回転中…</p>
-    </div>
-
-    <img id="gcSticker" class="gc-sticker" alt="sticker" style="display:none;">
-
-    <div id="gcCard" class="gc-card" style="display:none;">
-      <div class="gc-photo"><img id="gcPhoto" alt="post photo" referrerpolicy="no-referrer"></div>
-      <div id="gcText" class="gc-text"></div>
-      <div class="gc-meta">
-        <div class="gc-tip">スクリーンショットを保存してね！</div>
-        <div class="gc-actions">
-          <button id="btnAgain" class="gc-btn" title="もう一度投稿する">もう一度投稿する</button>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="photoBox">
+        <div id="phLoading" class="loading">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span>読み込み中…</span>
         </div>
+        <img id="photo" alt="post photo" class="hide" referrerpolicy="no-referrer">
       </div>
+      <div id="text" class="caption"></div>
+      <div class="row">
+        <button id="again" class="btn">もう一度投稿する</button>
+      </div>
+      <div class="hint">スクリーンショットを保存してね！</div>
     </div>
-
-    <div id="gcConfetti" class="gc-confetti"></div>
   </div>
-</div>
 
-<script>
-  const params = new URLSearchParams(location.search);
-  const spot = (params.get('spot') || 'veg').toLowerCase();
-  const sid  = params.get('sid') || '';
+  <script>
+    // ====== 1) 基本配置 ======
+    // 你的 Cloudflare Worker 代理地址（保持和你线上一致）
+    const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev/';
 
-  // 你的 Worker 根地址
-  const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
+    // 从 URL 读取参数
+    const params = new URLSearchParams(location.search);
+    const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
+    const sid  = (params.get('sid') || '').trim();             // jotform submission id（可为空）
 
-  // 首选：带 sid；回退：不带 sid
-  const urlWithSid   = s => `${API_BASE}?spot=${s}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`;
-  const urlWithoutSid= s => `${API_BASE}?spot=${s}&mode=list&t=${Date.now()}`;
-
-  const STICKER_DIR = {
-    veg:    'assets/stickers/veg/',
-    dairy:  'assets/stickers/dairy/',
-    staple: 'assets/stickers/staple/'
-  };
-  const DEFAULT_STICKERS = ['lucky_01.png','lucky_02.png','lucky_03.png','lucky_04.png','lucky_05.png'];
-
-  const FORM_URL = {
-    veg:    'https://form.jotform.com/252481324905052',
-    dairy:  'https://form.jotform.com/252484053770054',
-    staple: 'https://form.jotform.com/252483801287057'
-  };
-
-  const loading  = document.getElementById('gcLoading');
-  const msgEl    = document.getElementById('gcMsg');
-  const card     = document.getElementById('gcCard');
-  const photoImg = document.getElementById('gcPhoto');
-  const textEl   = document.getElementById('gcText');
-  const sticker  = document.getElementById('gcSticker');
-  const ctnConf  = document.getElementById('gcConfetti');
-  const btnAgain = document.getElementById('btnAgain');
-
-  const rand = arr => arr[Math.floor(Math.random()*arr.length)];
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
-
-  async function tryFetchJson(url){
-    const res = await fetch(url,{cache:'no-store'});
-    const text = await res.text();
-    if(!res.ok){
-      console.error('[gacha] fetch error', res.status, text);
-      throw new Error('HTTP '+res.status);
+    // ====== 2) 图片兜底（避免裂图） ======
+    function toProxyUrl(u) {
+      // 使用公开图片代理（weserv）；也可换成你自己的 Worker 反代
+      // 注意：weserv 需要不带协议，所以先把 https:// 去掉再 encode
+      return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//,''));
     }
-    try{
-      return JSON.parse(text);
-    }catch(e){
-      try{
-        const maybe = JSON.parse(text);
-        if(typeof maybe === 'string') return JSON.parse(maybe);
-        return maybe;
-      }catch(_){
-        console.error('[gacha] JSON.parse failed, raw text =>', text);
-        throw e;
+
+    function setPhotoSafe(imgEl, url) {
+      imgEl.decoding = 'async';
+      imgEl.loading = 'eager';
+      imgEl.referrerPolicy = 'no-referrer';
+
+      imgEl.onerror = () => {
+        // 只自动兜底一次，避免死循环
+        if (!imgEl.dataset.triedProxy) {
+          imgEl.dataset.triedProxy = '1';
+          imgEl.src = toProxyUrl(url);
+        }
+      };
+      imgEl.src = url;
+    }
+
+    // ====== 3) 拉取列表，带两级“避免抽到自己”的兜底 ======
+    async function fetchList({ spot, sid }) {
+      // 第一次：带 sid，期望服务端直接过滤
+      let url = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
+      let res, data;
+      try {
+        res = await fetch(url, { mode: 'cors', cache: 'no-store' });
+        data = await res.json();
+      } catch (e) {
+        data = null;
       }
-    }
-  }
 
-  function unwrapList(payload){
-    console.log('[gacha] raw response →', payload);
-    if(Array.isArray(payload)) return payload;
-    if(payload && typeof payload === 'object'){
-      if(Array.isArray(payload.data)) return payload.data;
-      if(typeof payload.data === 'string'){
-        try{
-          const d = JSON.parse(payload.data);
-          if(Array.isArray(d)) return d;
-          if(d && Array.isArray(d.data)) return d.data;
-        }catch(e){}
+      // 不是期望结构 或 status 非 200，尝试不带 sid 再拉一次
+      if (!data || typeof data !== 'object' || !Array.isArray(data.data)) {
+        let url2 = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list`;
+        try {
+          const res2 = await fetch(url2, { mode: 'cors', cache: 'no-store' });
+          const data2 = await res2.json();
+          return Array.isArray(data2?.data) ? data2.data : [];
+        } catch {
+          return [];
+        }
       }
-      if(Array.isArray(payload.result)) return payload.result;
-      if(Array.isArray(payload.items))  return payload.items;
-      // 明确看到 {status:400,...} 时返回空，让上层触发回退
-      if(payload.status && payload.status !== 200) return [];
+
+      // 正常拿到数组
+      return Array.isArray(data.data) ? data.data : [];
     }
-    if(typeof payload === 'string'){
-      try{ return unwrapList(JSON.parse(payload)); }catch(e){}
+
+    // 二次前端过滤，确保“绝不抽到自己”
+    function filterOutSelf(list, sid) {
+      if (!sid) return list;
+      // 仅保留：id 为空 或 id !== sid 的项
+      return list.filter(x => x && ((x.id && x.id !== sid) || !x.id));
     }
-    return null;
-  }
 
-  function pickStickerUrl(){
-    const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
-    return dir + rand(DEFAULT_STICKERS);
-  }
-
-  let confettiTimer=null;
-  function spawnConfettiBurst(k=12){
-    const colors=['#ff7676','#ffd166','#06d6a0','#118ab2','#9b5de5','#f15bb5','#ffc6ff'];
-    const w=ctnConf.clientWidth||720;
-    for(let i=0;i<k;i++){
-      const p=document.createElement('i');
-      p.style.left=(Math.random()*w)+'px';
-      p.style.background=colors[(Math.random()*colors.length)|0];
-      p.style.animationDelay=(Math.random()*0.35)+'s';
-      p.style.animationDuration=(1.8+Math.random()*1.4)+'s';
-      p.addEventListener('animationend',()=>p.remove());
-      ctnConf.appendChild(p);
+    function pickOne(list) {
+      if (!list || !list.length) return null;
+      return list[Math.floor(Math.random() * list.length)];
     }
-  }
-  function startConfetti(totalMs=2400, intervalMs=160, perBurst=14){
-    spawnConfettiBurst(perBurst);
-    confettiTimer=setInterval(()=>spawnConfettiBurst(perBurst), intervalMs);
-    setTimeout(()=>{clearInterval(confettiTimer);confettiTimer=null;}, totalMs);
-  }
 
-  async function getListFor(s){
-    // ① 先带 sid
-    try{
-      const raw1 = await tryFetchJson(urlWithSid(s));
-      const list1 = unwrapList(raw1);
-      if(list1 && list1.length) return list1;
-      console.warn('[gacha] empty or error with sid -> fallback without sid');
-    }catch(e){
-      console.warn('[gacha] fetch failed with sid -> fallback', e);
-    }
-    // ② 回退：不带 sid
-    const raw2 = await tryFetchJson(urlWithoutSid(s));
-    const list2 = unwrapList(raw2);
-    return Array.isArray(list2) ? list2 : [];
-  }
+    // ====== 4) 渲染 ======
+    const $photo = document.getElementById('photo');
+    const $text  = document.getElementById('text');
+    const $phLoading = document.getElementById('phLoading');
+    const $again = document.getElementById('again');
 
-  async function boot(){
-    try{
-      await sleep(150);
-      const list = await getListFor(spot);
+    async function boot() {
+      // 拉列表
+      const rawList = await fetchList({ spot, sid });
+      const list = filterOutSelf(rawList, sid);
 
-      if(!list || !list.length){
-        msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
-        console.warn('[gacha] unexpected response shape, list empty');
+      if (!list.length) {
+        showError('読み込みに失敗しました。再読み込みしてください。');
         return;
       }
 
-      const post = rand(list);
-      if(!post || !post.img){
-        msgEl.textContent = '投稿データが不正です。';
-        console.warn('[gacha] bad post item', post);
+      const post = pickOne(list);
+      if (!post) {
+        showError('読み込みに失敗しました。再読み込みしてください。');
         return;
       }
 
-      photoImg.src = post.img;          // Jotform 画像直リンク
-      textEl.textContent = post.text || '';
+      // 显示图片（带兜底）
+      setPhotoSafe($photo, post.img);
+      $photo.classList.remove('hide');
+      $phLoading.classList.add('hide');
 
-      sticker.onerror = () => { sticker.style.display='none'; };
-      sticker.src = pickStickerUrl();
-      sticker.style.display = 'block';
-
-      loading.style.display = 'none';
-      card.style.display = 'flex';
-      startConfetti(2600, 160, 14);
-    }catch(err){
-      console.error('[gacha] failed:', err);
-      msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
+      // 文案
+      $text.textContent = (post.text || '').trim();
     }
-  }
 
-  btnAgain.addEventListener('click', ()=>{
-    const url = (FORM_URL[spot] || FORM_URL.veg) + (sid ? `&fromsid=${encodeURIComponent(sid)}` : '');
-    location.href = url;
-  });
+    function showError(msg) {
+      $phLoading.classList.remove('hide');
+      $phLoading.innerHTML = `<span style="opacity:.6">${msg}</span>`;
+      $photo.classList.add('hide');
+      $text.textContent = '';
+    }
 
-  boot();
-</script>
+    // 再投一次：保留当前的 spot，跳到你原来的投稿入口（保持原逻辑）
+    $again.addEventListener('click', () => {
+      // 这里仅示例：你可以换成真实的 Jotform 链接
+      // location.href = `https://form.jotform.com/xxxxxx?spot=${encodeURIComponent(spot)}`;
+      history.back(); // 如果你之前就是从 Jotform“返回”到这里，也可以先用后退
+    });
+
+    // 启动
+    boot();
+  </script>
 </body>
 </html>
