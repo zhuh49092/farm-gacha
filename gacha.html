@@ -14,16 +14,19 @@
     img{display:block;width:100%;height:100%;object-fit:contain;max-width:100%;max-height:100%;image-rendering:-webkit-optimize-contrast;}
     .caption{margin-top:16px;font-size:18px;font-weight:600;}
     .muted{color:var(--muted);font-size:14px;}
-    .btn{margin-top:18px;display:block;width:100%;background:var(--btn);color:#1b1b1b;padding:14px 16px;border-radius:12px;text-align:center;font-weight:700;}
+    .btn{margin-top:18px;display:block;width:100%;background:var(--btn);color:#1b1b1b;padding:14px 16px;border-radius:12px;text-align:center;font-weight:700;cursor:pointer;}
     .center{text-align:center;margin-top:24px;}
     .spinner{width:36px;height:36px;border-radius:50%;border:4px solid #222328;border-top-color:#e1e1e6;animation:spin 1s linear infinite;}
     @keyframes spin{to{transform:rotate(360deg)}}
+    .err{color:#ff9e9e}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="imgbox"><img id="photo" alt="post photo" crossOrigin="anonymous"/></div>
+      <div class="imgbox">
+        <img id="photo" alt="post photo" crossOrigin="anonymous" referrerpolicy="no-referrer"/>
+      </div>
       <div id="cap" class="caption"></div>
       <div class="muted">スクリーンショットを保存してね！</div>
       <div id="btn" class="btn">もう一度投稿する</div>
@@ -32,7 +35,7 @@
   </div>
 
   <script>
-    // ==== 你的 Worker 根地址（不要带末尾斜杠）====
+    // Worker 根地址（你的）
     const WORKER_ORIGIN = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
     const API_BASE = WORKER_ORIGIN;
 
@@ -45,53 +48,83 @@
     const $btn   = document.getElementById('btn');
     const $status= document.getElementById('status');
 
-    function showLoading(t='読み込み中...'){ $status.innerHTML = `<div class="spinner"></div><div style="margin-top:10px">${t}</div>` }
+    function showLoading(t='読み込み中...'){
+      $status.innerHTML = `<div class="spinner"></div><div style="margin-top:10px">${t}</div>`;
+    }
     function clearStatus(){ $status.textContent='' }
-    function toast(t){ $status.textContent=t }
+    function toast(t, isErr=false){ $status.innerHTML = isErr ? `<span class="err">${t}</span>` : t }
 
-    // 通过 Worker → R2 的缓存图片 URL
     function cachedImg(url, key){
       const p = new URLSearchParams({ u: url });
       if (key) p.set('key', key);
       return `${WORKER_ORIGIN}/img?${p.toString()}`;
     }
 
-    // 安全解析 JSON：失败时把原文打印出来
-    function tryParseJson(text){
-      try { return { ok:true, data: JSON.parse(text) } }
-      catch(e){ console.warn('[gacha] raw response -->', text); return { ok:false, error:e } }
-    }
-
     async function fetchList(){
       const url = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list${sid?`&sid=${encodeURIComponent(sid)}`:''}`;
-      const r = await fetch(url, { cache: 'no-store', headers: { 'accept': 'application/json' } });
-      const text = await r.text();
-      const parsed = tryParseJson(text);
-      if (!parsed.ok) throw new Error('bad json');
-      const j = parsed.data;
-
-      if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('bad envelope');
-      if (j.status !== 200) throw new Error(`upstream ${j.status}: ${JSON.stringify(j.data)}`);
+      const r = await fetch(url, { cache: 'no-store' });
+      const raw = await r.text();
+      console.log('[gacha] raw list response =>', raw);
+      let j;
+      try { j = JSON.parse(raw) } catch(e) {
+        throw new Error(`JSON parse error: ${e?.message || e}`);
+      }
+      console.log('[gacha] parsed =>', j);
+      if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('response shape invalid');
+      if (j.status !== 200) throw new Error(`upstream ${j.status} => ${JSON.stringify(j.data)}`);
       const arr = Array.isArray(j.data) ? j.data : [];
-      return sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
+      const final = sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
+      console.log('[gacha] list length =>', final.length);
+      return final;
     }
 
     function pickOne(arr){ return arr.length ? arr[Math.floor(Math.random()*arr.length)] : null }
 
+    async function loadImageWithFallback(item){
+      return new Promise(resolve=>{
+        let triedFallback = false;
+        const r2Url = cachedImg(item.img, item.id || '');
+        const orig  = item.img;
+
+        const done = ok => { clearStatus(); resolve(ok) }
+
+        $photo.onerror = () => {
+          if (!triedFallback){
+            console.warn('[gacha] r2 image failed, fallback to origin', r2Url, '→', orig);
+            triedFallback = true;
+            $photo.src = orig;
+          } else {
+            toast('画像の読み込みに失敗しました', true);
+            done(false);
+          }
+        };
+        $photo.onload = () => done(true);
+
+        // 先走 R2
+        $photo.src = r2Url;
+      });
+    }
+
     async function boot(){
       try{
         showLoading();
+        // 先自检一次 Worker
+        const health = await fetch(`${API_BASE}/health`).then(r=>r.ok?r.json():null).catch(()=>null);
+        console.log('[gacha] health =>', health);
+
         const list = await fetchList();
-        if (!list.length){ toast('投稿がまだ少ないみたい...'); $photo.src=''; $cap.textContent=''; return }
+        if (!list.length){
+          toast('投稿がまだ少ないみたい…');
+          $photo.src=''; $cap.textContent='';
+          return;
+        }
         const item = pickOne(list);
+        console.log('[gacha] pick =>', item);
         $cap.textContent = item?.text || '';
-        $photo.src = '';
-        $photo.onload = () => clearStatus();
-        $photo.onerror = () => toast('画像の読み込みに失敗しました');
-        $photo.src = cachedImg(item.img, item.id || '');
+        await loadImageWithFallback(item);
       }catch(e){
-        toast('読み込みに失敗しました。再読み込みしてください。');
         console.warn('[gacha] fail:', e);
+        toast('読み込みに失敗しました。再読み込みしてください。', true);
       }
     }
 
