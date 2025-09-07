@@ -2,163 +2,147 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>投稿ガチャ</title>
   <style>
     :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background:#0c0c0e; color:#eaeaea; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; }
-    .wrap { min-height: 100dvh; display:flex; align-items:center; justify-content:center; padding: 20px; }
-    .card { width:min(92vw,720px); background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); padding: 22px; }
-    .photoBox { aspect-ratio: 1 / 1; width: 100%; border-radius: 16px; overflow:hidden; background:#141418; display:grid; place-items:center; }
-    .photoBox img { width:100%; height:100%; object-fit: contain; }
-    .caption { margin: 16px 2px 6px; font-size: 16px; line-height: 1.6; color:#ddd; min-height: 1.6em; }
-    .row { display:flex; gap:12px; justify-content:flex-end; align-items:center; margin-top: 14px; }
-    .btn { appearance:none; border:0; cursor:pointer; padding:12px 20px; border-radius:999px; background:#f4c85a; color:#1b1200; font-weight:700; font-size:16px; box-shadow: 0 8px 18px rgba(244,200,90,0.25); }
-    .hint { opacity:.75; font-size: 13px; margin-top: 10px; }
-    .loading { display:flex; align-items:center; justify-content:center; gap:10px; color:#bdbdbd; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#bdbdbd; animation: pulse 1.2s infinite ease-in-out; }
-    .dot:nth-child(2){animation-delay:.15s} .dot:nth-child(3){animation-delay:.3s}
-    @keyframes pulse { 0%, 80%, 100% { opacity:.2; transform:scale(.8) } 40% { opacity:1; transform:scale(1) } }
-    .hide { display:none !important; }
+    body {
+      margin: 0; background:#0b0b0e; color:#eaeaea; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      display:flex; justify-content:center; min-height:100dvh;
+    }
+    .wrap { width:min(560px, 92vw); padding:28px 0 40px; }
+    .card {
+      background:linear-gradient(180deg, #15161a, #101114);
+      border-radius:20px; padding:18px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .photoBox {
+      background:#121316; border-radius:16px; aspect-ratio:1/1; overflow:hidden;
+      display:flex; align-items:center; justify-content:center;
+    }
+    img.photo {
+      width:100%; height:100%; object-fit:contain; display:block; image-rendering:auto;
+    }
+    .text { margin:16px 8px 4px; font-size:20px; line-height:1.5; }
+    .hint { opacity:.7; font-size:14px; margin:12px 8px 22px; }
+    .row { display:flex; gap:12px; }
+    .btn {
+      flex:1; padding:14px 16px; border-radius:999px; border:none; cursor:pointer;
+      background:#f5c768; color:#221a03; font-weight:700; font-size:16px;
+      box-shadow:0 8px 18px rgba(245,199,104,.28);
+    }
+    .loading { text-align:center; padding:40px 0; opacity:.8; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card" id="card">
+    <div id="stage" class="card">
       <div class="photoBox">
-        <div id="phLoading" class="loading">
-          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <span>読み込み中…</span>
-        </div>
-        <img id="photo" alt="post photo" class="hide" referrerpolicy="no-referrer">
+        <img id="photo" class="photo" alt="post photo" />
       </div>
-      <div id="text" class="caption"></div>
-      <div class="row">
-        <button id="again" class="btn">もう一度投稿する</button>
-      </div>
+      <div id="text" class="text"></div>
       <div class="hint">スクリーンショットを保存してね！</div>
+      <div class="row">
+        <button id="retry" class="btn">もう一度投稿する</button>
+      </div>
+      <div id="loading" class="loading" style="display:none;">読み込み中...</div>
     </div>
   </div>
 
   <script>
-    // ====== 1) 基本配置 ======
-    // 你的 Cloudflare Worker 代理地址（保持和你线上一致）
+    // 你的 Worker 域名（结尾要有 /）
     const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev/';
 
-    // 从 URL 读取参数
-    const params = new URLSearchParams(location.search);
-    const spot = (params.get('spot') || 'veg').toLowerCase();  // veg / dairy / staple
-    const sid  = (params.get('sid') || '').trim();             // jotform submission id（可为空）
+    // 兜底转换
+    const toWeserv = (u) => 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//,''));
+    const toWorkerImg = (u) => API_BASE + 'img?u=' + encodeURIComponent(u);
 
-    // ====== 2) 图片兜底（避免裂图） ======
-    function toProxyUrl(u) {
-      // 使用公开图片代理（weserv）；也可换成你自己的 Worker 反代
-      // 注意：weserv 需要不带协议，所以先把 https:// 去掉再 encode
-      return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//,''));
+    // 解析 URL 参数
+    function qs(k, def='') {
+      const v = new URLSearchParams(location.search).get(k);
+      return v == null ? def : v;
     }
+    const spot = (qs('spot','veg') + '').toLowerCase();
+    const sid  = (qs('sid','') + '').trim();
 
+    const $photo = document.getElementById('photo');
+    const $text  = document.getElementById('text');
+    const $loading = document.getElementById('loading');
+    const $retry = document.getElementById('retry');
+
+    function showLoading(on) { $loading.style.display = on ? '' : 'none'; }
+
+    // 关键：图片安全加载（原图 -> Worker反代 -> weserv）
     function setPhotoSafe(imgEl, url) {
       imgEl.decoding = 'async';
       imgEl.loading = 'eager';
       imgEl.referrerPolicy = 'no-referrer';
+      delete imgEl.dataset.step;
 
       imgEl.onerror = () => {
-        // 只自动兜底一次，避免死循环
-        if (!imgEl.dataset.triedProxy) {
-          imgEl.dataset.triedProxy = '1';
-          imgEl.src = toProxyUrl(url);
-        }
+        if (!imgEl.dataset.step) {
+          imgEl.dataset.step = 'worker';
+          imgEl.src = toWorkerImg(url);      // 第一次失败：走 Worker
+        } else if (imgEl.dataset.step === 'worker') {
+          imgEl.dataset.step = 'weserv';
+          imgEl.src = toWeserv(url);         // 仍失败：走 weserv
+        } // 第三次失败则保持错误，不再死循环
       };
-      imgEl.src = url;
+
+      imgEl.src = url; // 先尝试原图
     }
 
-    // ====== 3) 拉取列表，带两级“避免抽到自己”的兜底 ======
-    async function fetchList({ spot, sid }) {
-      // 第一次：带 sid，期望服务端直接过滤
-      let url = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
-      let res, data;
-      try {
-        res = await fetch(url, { mode: 'cors', cache: 'no-store' });
-        data = await res.json();
-      } catch (e) {
-        data = null;
-      }
-
-      // 不是期望结构 或 status 非 200，尝试不带 sid 再拉一次
-      if (!data || typeof data !== 'object' || !Array.isArray(data.data)) {
-        let url2 = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list`;
-        try {
-          const res2 = await fetch(url2, { mode: 'cors', cache: 'no-store' });
-          const data2 = await res2.json();
-          return Array.isArray(data2?.data) ? data2.data : [];
-        } catch {
-          return [];
-        }
-      }
-
-      // 正常拿到数组
-      return Array.isArray(data.data) ? data.data : [];
-    }
-
-    // 二次前端过滤，确保“绝不抽到自己”
-    function filterOutSelf(list, sid) {
-      if (!sid) return list;
-      // 仅保留：id 为空 或 id !== sid 的项
-      return list.filter(x => x && ((x.id && x.id !== sid) || !x.id));
+    async function fetchList() {
+      const url = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
+      const r = await fetch(url, { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      return j;
     }
 
     function pickOne(list) {
-      if (!list || !list.length) return null;
-      return list[Math.floor(Math.random() * list.length)];
+      return list.length ? list[Math.floor(Math.random() * list.length)] : null;
     }
-
-    // ====== 4) 渲染 ======
-    const $photo = document.getElementById('photo');
-    const $text  = document.getElementById('text');
-    const $phLoading = document.getElementById('phLoading');
-    const $again = document.getElementById('again');
 
     async function boot() {
-      // 拉列表
-      const rawList = await fetchList({ spot, sid });
-      const list = filterOutSelf(rawList, sid);
+      showLoading(true);
+      try {
+        const res = await fetchList();
+        // 兼容 Apps Script/Worker 的响应格式：{ status, data }
+        let list = Array.isArray(res) ? res : (res && res.data);
+        if (!Array.isArray(list)) list = [];
 
-      if (!list.length) {
-        showError('読み込みに失敗しました。再読み込みしてください。');
-        return;
+        // 二次过滤：前端也排除 sid，确保“绝不会抽到自己”
+        const my = sid;
+        if (my) {
+          list = list.filter(x =>
+            x && x.img && ( !x.id || (x.id && String(x.id) !== String(my)) )
+          );
+        }
+
+        const item = pickOne(list);
+        if (!item) {
+          $text.textContent = '投稿がまだ少ないみたい…';
+          setPhotoSafe($photo, ''); // 清空
+          showLoading(false);
+          return;
+        }
+
+        // 渲染
+        setPhotoSafe($photo, item.img);
+        $text.textContent = item.text || '';
+      } catch (e) {
+        console.warn('[gacha] error ->', e);
+        $text.textContent = '読み込みに失敗しました。再読み込みしてください。';
+      } finally {
+        showLoading(false);
       }
-
-      const post = pickOne(list);
-      if (!post) {
-        showError('読み込みに失敗しました。再読み込みしてください。');
-        return;
-      }
-
-      // 显示图片（带兜底）
-      setPhotoSafe($photo, post.img);
-      $photo.classList.remove('hide');
-      $phLoading.classList.add('hide');
-
-      // 文案
-      $text.textContent = (post.text || '').trim();
     }
 
-    function showError(msg) {
-      $phLoading.classList.remove('hide');
-      $phLoading.innerHTML = `<span style="opacity:.6">${msg}</span>`;
-      $photo.classList.add('hide');
-      $text.textContent = '';
-    }
+    $retry.onclick = () => {
+      const url = new URL(location.href);
+      url.searchParams.set('t', Date.now().toString(36)); // cache buster
+      location.href = url.toString();
+    };
 
-    // 再投一次：保留当前的 spot，跳到你原来的投稿入口（保持原逻辑）
-    $again.addEventListener('click', () => {
-      // 这里仅示例：你可以换成真实的 Jotform 链接
-      // location.href = `https://form.jotform.com/xxxxxx?spot=${encodeURIComponent(spot)}`;
-      history.back(); // 如果你之前就是从 Jotform“返回”到这里，也可以先用后退
-    });
-
-    // 启动
     boot();
   </script>
 </body>
