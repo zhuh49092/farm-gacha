@@ -1,205 +1,89 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ガチャ</title>
-<style>
-  :root {
-    --bg:#0b0b0f;
-    --panel:#141418;
-    --panel-2:#1a1a22;
-    --text:#eaeaf2;
-    --muted:#9aa0aa;
-    --accent:#e5c065;
-  }
-  html,body{height:100%}
-  body{
-    margin:0;background:var(--bg);color:var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .wrap{width:min(720px,92vw);margin:6vh auto;}
-  .card{
-    background:linear-gradient(180deg, var(--panel), var(--panel-2));
-    border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.35);
-    padding:28px 28px 22px; position:relative; overflow:hidden;
-  }
-  .media{
-    width:100%; aspect-ratio: 1/1; border-radius:16px;
-    background:#0e0e12; display:grid; place-items:center;
-    overflow:hidden; border:1px solid rgba(255,255,255,.06);
-  }
-  .media img{
-    width:100%; height:100%; object-fit:cover; display:block;
-    image-rendering:auto; -webkit-mask-image:-webkit-radial-gradient(white, black);
-  }
-  .caption{margin:14px 6px 0; font-size:18px}
-  .muted{color:var(--muted); font-size:12px; margin:8px 6px 0}
-  .btns{display:flex; gap:12px; margin:18px 6px 0; flex-wrap:wrap}
-  .btn{
-    appearance:none; border:0; cursor:pointer; font-weight:600;
-    border-radius:999px; padding:14px 18px; transition:.2s transform, .2s filter;
-    box-shadow:0 8px 24px rgba(0,0,0,.25);
-  }
-  .btn:active{transform:translateY(1px)}
-  .btn-primary{background:var(--accent); color:#3b2d05}
-  .btn-ghost{background:#23232b; color:var(--text)}
-  .footnote{color:#7b8390; font-size:12px; margin:20px 8px 0}
-  canvas#confetti{position:fixed; inset:0; pointer-events:none}
-  .err{color:#ff9090}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>投稿ガチャ</title>
+  <style>
+    body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
+    .card { background:#111; margin:20px auto; padding:20px; border-radius:12px; max-width:400px; }
+    img { max-width:100%; border-radius:8px; }
+    button {
+      background:#f2c94c; border:none; padding:10px 20px; border-radius:8px;
+      font-size:16px; cursor:pointer; margin:10px;
+    }
+    #error { color:#f88; margin-top:10px; }
+    canvas#confetti { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  </style>
 </head>
 <body>
+
+<h2>投稿ガチャ</h2>
+<div class="card" id="result">読み込み中...</div>
+
+<button onclick="reroll()">もう一回ガチャ</button>
+<button onclick="location.href='https://docs.google.com/forms/...yourFormURL...'">もう一度投稿する</button>
+
+<div id="error"></div>
 <canvas id="confetti"></canvas>
-<div class="wrap">
-  <div class="card" id="card">
-    <div class="media" id="media"><span class="muted">Loading…</span></div>
-    <div class="caption" id="caption"></div>
-    <div class="muted" id="tip">スクリーンショットを保存してね！</div>
-    <div class="btns">
-      <button class="btn btn-primary" id="againBtn">もう一度投稿する</button>
-      <button class="btn btn-ghost" id="rerollBtn">もう一回ガチャ</button>
-    </div>
-    <div class="footnote" id="footnote"></div>
-  </div>
-</div>
 
 <script>
-/** ========= 可调整区域 ========= */
-// 你的 Apps Script（已验证可直连的那个）。保持 list 模式，sid 由脚本过滤。
-const API_BASE =
-  "https://script.google.com/macros/s/AKfycbzohTsM5dhSUFTMTgc2c8OEoOJsIHZpz00aSl1FIgF6rjsS_MRPr_uWP1o-nlNttA0IVw/exec";
+const API_BASE = "https://script.google.com/macros/s/AKfycbzohTsM5dhSUFTMTgc2c8OEoOJsIHZpz00aSl1FIgF6rjsS_MRPr_uWP1o-nlNttA0IVw/exec";
 
-// “再投稿”按钮跳转的地址（你原来的投稿页）
-const POST_URL = "./"; // 没有就先指向站点根，之后你可替换成表单页 URL
+// 取得 URL パラメータ
+const urlParams = new URLSearchParams(window.location.search);
+const spot = urlParams.get("spot") || "veg";
+const sid  = urlParams.get("sid") || "";
 
-// 如果 images.weserv 也挂了，可设为 false 取消代理兜底
-const ENABLE_IMAGE_PROXY_FALLBACK = true;
-/** ================================= */
-
-// 读 URL 参数
-const params = new URLSearchParams(location.search);
-const spot = (params.get("spot") || "veg").toLowerCase();
-const sid  = (params.get("sid")  || "").trim();
-
-// 组装请求 URL：mode=list + 可选 sid
-const apiUrl = new URL(API_BASE);
-apiUrl.searchParams.set("spot", spot);
-apiUrl.searchParams.set("mode", "list");
-if (sid) apiUrl.searchParams.set("sid", sid);
-
-const els = {
-  media:    document.getElementById("media"),
-  caption:  document.getElementById("caption"),
-  tip:      document.getElementById("tip"),
-  footnote: document.getElementById("footnote"),
-  again:    document.getElementById("againBtn"),
-  reroll:   document.getElementById("rerollBtn"),
-};
-
-// 简易彩纸
-const Confetti = (() => {
-  const cvs = document.getElementById("confetti"), ctx = cvs.getContext("2d");
-  let W = cvs.width = innerWidth, H = cvs.height = innerHeight;
-  addEventListener("resize", () => {W=cvs.width=innerWidth; H=cvs.height=innerHeight;});
-  function burst(n=120){
-    const parts=[];
-    for(let i=0;i<n;i++){
-      parts.push({
-        x: W/2, y: H*.25, r: 2+Math.random()*4,
-        vx: (Math.random()-.5)*6, vy: (Math.random()*-4 - 2),
-        g: .15+Math.random()*.2,
-        c: `hsl(${Math.random()*360},90%,60%)`,
-        a: 1, life: 120+Math.random()*60
-      });
-    }
-    const tick=()=>{
-      ctx.clearRect(0,0,W,H);
-      let alive=false;
-      for(const p of parts){
-        if(p.life<=0) continue;
-        alive=true;
-        p.vy += p.g; p.x += p.vx; p.y += p.vy; p.life -= 1; p.a = Math.max(0, p.life/180);
-        ctx.globalAlpha = p.a; ctx.fillStyle=p.c;
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      if(alive) requestAnimationFrame(tick);
-    };
-    tick();
-  }
-  return { burst };
-})();
-
-// 图片兜底：失败时试 images.weserv 代理
-function attachImgFallback(img, url){
-  let triedProxy = false;
-  img.addEventListener("error", () => {
-    if (ENABLE_IMAGE_PROXY_FALLBACK && !triedProxy) {
-      triedProxy = true;
-      const proxied = "https://images.weserv.nl/?url=" + encodeURIComponent(url.replace(/^https?:\/\//,''));
-      img.src = proxied;
-    }
-  }, { once:false });
+// 彩紙アニメーション
+function fireConfetti() {
+  const duration = 1500;
+  const end = Date.now() + duration;
+  (function frame() {
+    confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } });
+    confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
 }
 
-// 渲染卡片
-function render(item){
-  // 图片
-  els.media.innerHTML = "";
-  const img = new Image();
-  img.loading = "eager";
-  img.decoding = "async";
-  img.referrerPolicy = "no-referrer"; // 一些图床更友好
-  img.crossOrigin   = "anonymous";
-  img.alt = "post photo";
-  img.src = item.img;
-  attachImgFallback(img, item.img);
-  els.media.appendChild(img);
-
-  // 文案
-  els.caption.textContent = item.text || "";
-  els.footnote.textContent = `spot=${spot}${sid?` / sid=${sid}（この投稿は候補から除外）`:''}`;
-
-  // 彩纸
-  Confetti.burst(160);
-}
-
-function error(msg){
-  els.media.innerHTML = `<span class="muted err">${msg}</span>`;
-  els.caption.textContent = "";
-}
-
-// 获取并抽取
-async function getOne(){
-  try{
-    els.media.innerHTML = `<span class="muted">Loading…</span>`;
-    const r = await fetch(apiUrl.toString(), {cache:"no-store"});
+// 投稿取得
+async function getOne() {
+  document.getElementById("result").textContent = "読み込み中...";
+  document.getElementById("error").textContent = "";
+  try {
+    const API = `${API_BASE}?spot=${spot}&mode=list`;
+    const r = await fetch(API);
     const j = await r.json();
-    if (!(j && j.status===200 && Array.isArray(j.data))) {
-      throw new Error("unexpected response");
+
+    if (j.status === 200 && Array.isArray(j.data)) {
+      // 自分の投稿を除外
+      let list = j.data.filter(x => !sid || x.id !== sid);
+      if (list.length === 0) list = j.data; // 全部除外された場合は全体にフォールバック
+
+      const one = list[Math.floor(Math.random() * list.length)];
+      document.getElementById("result").innerHTML = `
+        <p><img src="${one.img}" alt="post photo"></p>
+        <p>${one.text || "(no text)"}</p>
+      `;
+      fireConfetti();
+    } else {
+      document.getElementById("error").textContent = "データ取得エラー: " + JSON.stringify(j);
     }
-    if (!j.data.length) {
-      error("投稿がまだ少ないみたい…");
-      return;
-    }
-    const one = j.data[Math.floor(Math.random() * j.data.length)];
-    render(one);
-  }catch(e){
-    console.error("[gacha] fail:", e);
-    error("読み込みに失敗しました。再読込みしてください。");
+  } catch (err) {
+    console.error(err);
+    document.getElementById("error").textContent = "ネットワークエラー: データを取得できません";
   }
 }
 
-// 事件
-els.again.addEventListener("click", () => {
-  if (POST_URL) location.href = POST_URL; else history.back();
-});
-els.reroll.addEventListener("click", getOne);
+function reroll() {
+  getOne();
+}
 
-// 首次加载
+// 初回実行
 getOne();
 </script>
+
+<!-- confetti library -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </body>
 </html>
