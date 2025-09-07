@@ -32,7 +32,7 @@
   </div>
 
   <script>
-    // 你的 Worker 根地址
+    // 你的 Worker 根域名
     const WORKER_ORIGIN = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
     const API_BASE = WORKER_ORIGIN; // JSON 列表就请求根路径
 
@@ -49,10 +49,10 @@
     function clearStatus(){ $status.textContent='' }
     function toast(t){ $status.textContent=t }
 
-    // 关键：通过 /img?u=&key= 让 Worker → R2 缓存图片
+    // 通过 /img 走 Worker，命中 R2 缓存；key 用投稿 id，让同一投稿图片永远命中
     function cachedImg(url, key){
       const p = new URLSearchParams({ u: url });
-      if (key) p.set('key', key); // 用投稿的 submission id 当 key，R2 命中最稳定
+      if (key) p.set('key', key);
       return `${WORKER_ORIGIN}/img?${p.toString()}`;
     }
 
@@ -63,7 +63,7 @@
       if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('bad json');
       if (j.status !== 200) throw new Error(`upstream ${j.status}: ${JSON.stringify(j.data)}`);
       const arr = Array.isArray(j.data) ? j.data : [];
-      // 双重保险：再过滤掉“自己”
+      // 双重保险：再过滤掉“自己”那条
       return sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
     }
 
