@@ -2,83 +2,28 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
-  />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
   <title>投稿ガチャ</title>
   <style>
-    :root {
-      --bg: #0d0d0f;
-      --card: #151518;
-      --text: #f2f2f3;
-      --muted: #a0a0a6;
-      --btn: #e8c46a;
-    }
-    html,body {
-      margin: 0; padding: 0; height: 100%;
-      background: var(--bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
-        "Yu Gothic", Meiryo, sans-serif;
-    }
-    .wrap {
-      max-width: 720px; margin: 0 auto; padding: 20px 16px 40px;
-    }
-    .card {
-      background: var(--card);
-      border-radius: 20px;
-      box-shadow: 0 8px 28px rgba(0,0,0,.35);
-      padding: 18px;
-    }
-    .imgbox {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 1 / 1;
-      border-radius: 14px;
-      overflow: hidden;
-      background: #0f0f12;
-      display: grid;
-      place-items: center;
-    }
-    .imgbox img {
-      display: block;
-      max-width: 100%;
-      max-height: 100%;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: crisp-edges;
-    }
-    .caption {
-      margin-top: 16px; font-size: 18px; font-weight: 600;
-    }
-    .muted { color: var(--muted); font-size: 14px; }
-    .btn {
-      margin-top: 18px;
-      display: block; width: 100%;
-      background: var(--btn); color: #1b1b1b;
-      padding: 14px 16px;
-      border-radius: 12px; text-align: center; font-weight: 700;
-      letter-spacing: .02em;
-      user-select: none; -webkit-user-select: none;
-    }
-    .center { text-align:center; margin-top: 24px; }
-    .spinner {
-      width: 36px; height: 36px; border-radius: 50%;
-      border: 4px solid #222328; border-top-color: #e1e1e6;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    :root { --bg:#0d0d0f; --card:#151518; --text:#f2f2f3; --muted:#a0a0a6; --btn:#e8c46a; }
+    html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;}
+    .wrap{max-width:720px;margin:0 auto;padding:20px 16px 40px;}
+    .card{background:var(--card);border-radius:20px;box-shadow:0 8px 28px rgba(0,0,0,.35);padding:18px;}
+    .imgbox{position:relative;width:100%;aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:#0f0f12;display:grid;place-items:center;}
+    img{display:block;width:100%;height:100%;object-fit:contain;max-width:100%;max-height:100%;image-rendering:-webkit-optimize-contrast;}
+    .caption{margin-top:16px;font-size:18px;font-weight:600;}
+    .muted{color:var(--muted);font-size:14px;}
+    .btn{margin-top:18px;display:block;width:100%;background:var(--btn);color:#1b1b1b;padding:14px 16px;border-radius:12px;text-align:center;font-weight:700;}
+    .center{text-align:center;margin-top:24px;}
+    .spinner{width:36px;height:36px;border-radius:50%;border:4px solid #222328;border-top-color:#e1e1e6;animation:spin 1s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div id="card" class="card">
-      <div class="imgbox">
-        <img id="photo" alt="post photo" crossOrigin="anonymous" />
-      </div>
+    <div class="card">
+      <div class="imgbox"><img id="photo" alt="post photo" crossOrigin="anonymous"/></div>
       <div id="cap" class="caption"></div>
       <div class="muted">スクリーンショットを保存してね！</div>
       <div id="btn" class="btn">もう一度投稿する</div>
@@ -87,13 +32,10 @@
   </div>
 
   <script>
-    // 你的 Worker 根地址（不要带结尾斜杠）
+    // 你的 Worker 根地址
     const WORKER_ORIGIN = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
-
-    // API 基础地址：所有 /?spot=...&mode=list 都通过 Worker
     const API_BASE = WORKER_ORIGIN;
 
-    // 读取 url 参数
     const q = new URLSearchParams(location.search);
     const spot = (q.get('spot') || 'veg').toLowerCase();
     const sid  = (q.get('sid')  || '').trim();
@@ -103,77 +45,54 @@
     const $btn   = document.getElementById('btn');
     const $status= document.getElementById('status');
 
-    function showLoading(text = '読み込み中...') {
-      $status.innerHTML = `<div class="spinner"></div><div style="margin-top:10px">${text}</div>`;
-    }
-    function clearStatus() { $status.textContent = ''; }
-    function toast(msg) { $status.textContent = msg; }
+    function showLoading(t='読み込み中...'){ $status.innerHTML = `<div class="spinner"></div><div style="margin-top:10px">${t}</div>` }
+    function clearStatus(){ $status.textContent='' }
+    function toast(t){ $status.textContent=t }
 
-    // 关键：图片统一走 Worker 的 /img 反代，避免直连 Jotform
-    function proxiedImageUrl(rawUrl) {
-      return `${WORKER_ORIGIN}/img?u=${encodeURIComponent(rawUrl)}`;
+    // 关键：通过 /img?u=&key= 让 Worker 持久化到 R2
+    function cachedImg(url, key){ 
+      const p = new URLSearchParams({ u: url });
+      if (key) p.set('key', key);
+      return `${WORKER_ORIGIN}/img?${p.toString()}`;
     }
 
-    async function fetchList() {
-      const url = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}`:''}`;
+    async function fetchList(){
+      const url = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list${sid?`&sid=${encodeURIComponent(sid)}`:''}`;
       const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      // Apps Script/Worker 统一把真实状态塞在 JSON 里
-      if (!j || typeof j !== 'object' || !('status' in j)) {
-        throw new Error('bad json shape');
-      }
-      if (j.status !== 200) {
-        // 有时候你会故意把 upstream 状态塞进 data 里
-        throw new Error(`upstream ${j.status} ${JSON.stringify(j.data).slice(0,180)}`);
-      }
+      if (!j || typeof j !== 'object' || !('status' in j)) throw new Error('bad json');
+      if (j.status !== 200) throw new Error(`upstream ${j.status}: ${JSON.stringify(j.data)}`);
       const arr = Array.isArray(j.data) ? j.data : [];
-      // 双保险：如果后端没过滤，这里再过滤一次自己
-      const filtered = sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
-      return filtered;
+      // 双保险再过滤自己
+      return sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
     }
 
-    function pickOne(arr) {
-      if (!arr.length) return null;
-      const idx = Math.floor(Math.random() * arr.length);
-      return arr[idx];
-    }
+    function pickOne(arr){ return arr.length ? arr[Math.floor(Math.random()*arr.length)] : null }
 
-    async function boot() {
-      try {
-        showLoading('読み込み中...');
+    async function boot(){
+      try{
+        showLoading();
         const list = await fetchList();
-        if (!list.length) {
-          toast('投稿がまだ少ないみたい...');
-          $photo.src = '';
-          $cap.textContent = '';
-          return;
-        }
+        if (!list.length){ toast('投稿がまだ少ないみたい...'); $photo.src=''; $cap.textContent=''; return }
         const item = pickOne(list);
-        // 渲染
         $cap.textContent = item?.text || '';
-        const imgUrl = proxiedImageUrl(item.img);
-        // 先清空再赋值，避免 onload 不触发
         $photo.src = '';
-        $photo.onload = () => { clearStatus(); };
-        $photo.onerror = () => {
-          toast('画像の読み込みに失敗しました');
-        };
-        $photo.src = imgUrl;
-      } catch (e) {
-        toast(`読み込みに失敗しました。再読み込みしてください。`);
+        $photo.onload = () => clearStatus();
+        $photo.onerror = () => toast('画像の読み込みに失敗しました');
+        $photo.src = cachedImg(item.img, item.id || '');
+      }catch(e){
+        toast('読み込みに失敗しました。再読み込みしてください。');
         console.warn('[gacha] fail:', e);
       }
     }
 
-    // 再投稿按钮（保留你的原链接）
-    $btn.addEventListener('click', () => {
+    $btn.addEventListener('click', ()=>{
       const base = 'https://zhuh49092.github.io/farm-gacha/index.html';
-      const url = new URL(base);
-      url.searchParams.set('spot', spot);
-      location.href = url.toString();
+      const u = new URL(base);
+      u.searchParams.set('spot', spot);
+      location.href = u.toString();
     });
 
-    // 进入即启动
     boot();
   </script>
 </body>
