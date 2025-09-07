@@ -86,12 +86,12 @@
   const spot = (params.get('spot') || 'veg').toLowerCase();
   const sid  = params.get('sid') || '';
 
-  // Worker 根地址
+  // 你的 Worker 根地址
   const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
   // 首选：带 sid；回退：不带 sid
-  const urlWithSid    = s => `${API_BASE}?spot=${s}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`;
-  const urlWithoutSid = s => `${API_BASE}?spot=${s}&mode=list&t=${Date.now()}`;
+  const urlWithSid   = s => `${API_BASE}?spot=${s}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}&t=${Date.now()}`;
+  const urlWithoutSid= s => `${API_BASE}?spot=${s}&mode=list&t=${Date.now()}`;
 
   const STICKER_DIR = {
     veg:    'assets/stickers/veg/',
@@ -115,32 +115,32 @@
   const ctnConf  = document.getElementById('gcConfetti');
   const btnAgain = document.getElementById('btnAgain');
 
-  const rand  = arr => arr[Math.floor(Math.random()*arr.length)];
+  const rand = arr => arr[Math.floor(Math.random()*arr.length)];
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   async function tryFetchJson(url){
-    const res  = await fetch(url,{cache:'no-store'});
+    const res = await fetch(url,{cache:'no-store'});
     const text = await res.text();
     if(!res.ok){
-      // 静默处理，不在控制台报警 // NEW
+      console.error('[gacha] fetch error', res.status, text);
       throw new Error('HTTP '+res.status);
     }
     try{
       return JSON.parse(text);
-    }catch(_){
-      // 某些场景 Apps Script 会把 JSON 作为字符串再包一层
+    }catch(e){
       try{
         const maybe = JSON.parse(text);
         if(typeof maybe === 'string') return JSON.parse(maybe);
         return maybe;
-      }catch(e2){
-        throw e2;
+      }catch(_){
+        console.error('[gacha] JSON.parse failed, raw text =>', text);
+        throw e;
       }
     }
   }
 
-  // 兼容多种返回外形
   function unwrapList(payload){
+    console.log('[gacha] raw response →', payload);
     if(Array.isArray(payload)) return payload;
     if(payload && typeof payload === 'object'){
       if(Array.isArray(payload.data)) return payload.data;
@@ -149,87 +149,22 @@
           const d = JSON.parse(payload.data);
           if(Array.isArray(d)) return d;
           if(d && Array.isArray(d.data)) return d.data;
-        }catch(_){}
+        }catch(e){}
       }
       if(Array.isArray(payload.result)) return payload.result;
       if(Array.isArray(payload.items))  return payload.items;
-      if(payload.status && payload.status !== 200) return []; // NEW：错误时返回空，触发降级
+      // 明确看到 {status:400,...} 时返回空，让上层触发回退
+      if(payload.status && payload.status !== 200) return [];
     }
     if(typeof payload === 'string'){
-      try{ return unwrapList(JSON.parse(payload)); }catch(_){}
+      try{ return unwrapList(JSON.parse(payload)); }catch(e){}
     }
     return null;
   }
 
-  const pickStickerUrl = () => (STICKER_DIR[spot] || STICKER_DIR.veg) + rand(DEFAULT_STICKERS);
-
-  // NEW：只在文件真实存在时才设置 <img>，避免 404 噪音
-  async function safeSetSticker(){
-    try{
-      const url = pickStickerUrl();
-      const r = await fetch(url, { method:'HEAD', cache:'no-store' });
-      if(r.ok){
-        sticker.src = url;
-        sticker.style.display = 'block';
-      }else{
-        sticker.style.display = 'none';
-      }
-    }catch(_){
-      sticker.style.display = 'none';
-    }
-  }
-
-  // NEW：统一做“前端自过滤”，即便后端没过滤也能避免抽到自己
-  const stripSelf = (list, sid) => {
-    if(!sid) return list;
-    const s = String(sid).trim();
-    return list.filter(x => !x || !x.id ? true : String(x.id).trim() !== s);
-  };
-
-  // 无声降级：先带 sid，失败或空再不带 sid
-  async function getListFor(s){
-    try{
-      const l1 = unwrapList(await tryFetchJson(urlWithSid(s)));
-      if(l1 && l1.length) return l1;
-    }catch(_){}
-    try{
-      const l2 = unwrapList(await tryFetchJson(urlWithoutSid(s)));
-      return Array.isArray(l2) ? l2 : [];
-    }catch(_){
-      return [];
-    }
-  }
-
-  async function boot(){
-    try{
-      await sleep(120);
-      let list = await getListFor(spot);
-
-      // 先做本地“去自己” // NEW
-      list = stripSelf(list, sid);
-
-      if(!list || !list.length){
-        msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
-        return;
-      }
-
-      const post = rand(list);
-      if(!post || !post.img){
-        msgEl.textContent = '投稿データが不正です。';
-        return;
-      }
-
-      photoImg.src = post.img;          // 直链展示
-      textEl.textContent = post.text || '';
-
-      await safeSetSticker();            // NEW：仅当贴纸存在时才展示
-
-      loading.style.display = 'none';
-      card.style.display = 'flex';
-      startConfetti(2600, 160, 14);
-    }catch(_){
-      msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
-    }
+  function pickStickerUrl(){
+    const dir = STICKER_DIR[spot] || STICKER_DIR.veg;
+    return dir + rand(DEFAULT_STICKERS);
   }
 
   let confettiTimer=null;
@@ -250,6 +185,56 @@
     spawnConfettiBurst(perBurst);
     confettiTimer=setInterval(()=>spawnConfettiBurst(perBurst), intervalMs);
     setTimeout(()=>{clearInterval(confettiTimer);confettiTimer=null;}, totalMs);
+  }
+
+  async function getListFor(s){
+    // ① 先带 sid
+    try{
+      const raw1 = await tryFetchJson(urlWithSid(s));
+      const list1 = unwrapList(raw1);
+      if(list1 && list1.length) return list1;
+      console.warn('[gacha] empty or error with sid -> fallback without sid');
+    }catch(e){
+      console.warn('[gacha] fetch failed with sid -> fallback', e);
+    }
+    // ② 回退：不带 sid
+    const raw2 = await tryFetchJson(urlWithoutSid(s));
+    const list2 = unwrapList(raw2);
+    return Array.isArray(list2) ? list2 : [];
+  }
+
+  async function boot(){
+    try{
+      await sleep(150);
+      const list = await getListFor(spot);
+
+      if(!list || !list.length){
+        msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
+        console.warn('[gacha] unexpected response shape, list empty');
+        return;
+      }
+
+      const post = rand(list);
+      if(!post || !post.img){
+        msgEl.textContent = '投稿データが不正です。';
+        console.warn('[gacha] bad post item', post);
+        return;
+      }
+
+      photoImg.src = post.img;          // Jotform 画像直リンク
+      textEl.textContent = post.text || '';
+
+      sticker.onerror = () => { sticker.style.display='none'; };
+      sticker.src = pickStickerUrl();
+      sticker.style.display = 'block';
+
+      loading.style.display = 'none';
+      card.style.display = 'flex';
+      startConfetti(2600, 160, 14);
+    }catch(err){
+      console.error('[gacha] failed:', err);
+      msgEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
+    }
   }
 
   btnAgain.addEventListener('click', ()=>{
