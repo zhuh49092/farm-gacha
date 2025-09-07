@@ -2,91 +2,19 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <title>投稿ガチャ</title>
   <style>
-    :root {
-      color-scheme: dark;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #0c0c0f;
-      color: #eee;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
-    }
-    .wrap {
-      min-height: 100dvh;
-      display: grid;
-      place-items: center;
-      padding: 24px 16px;
-    }
-    .card {
-      width: min(92vw, 720px);
-      background: #141419;
-      border-radius: 24px;
-      box-shadow: 0 6px 20px rgba(0,0,0,.35);
-      padding: 20px 20px 16px;
-    }
-    .photoBox {
-      background: #101014;
-      border-radius: 18px;
-      overflow: hidden;
-      aspect-ratio: 1 / 1;
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(255,255,255,.06);
-    }
-    .photo {
-      max-width: 100%;
-      max-height: 100%;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      background: #0e0e12;
-    }
-    .caption {
-      margin: 14px 2px 4px;
-      font-size: 18px;
-      line-height: 1.45;
-      color: #eaeaea;
-      word-break: break-word;
-      min-height: 1lh;
-    }
-    .hint {
-      margin: 8px 2px 18px;
-      font-size: 13px;
-      color: #b9b9c6;
-    }
-    .btn {
-      -webkit-tap-highlight-color: transparent;
-      cursor: pointer;
-      width: 100%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      height: 56px;
-      border-radius: 16px;
-      border: none;
-      background: #e8c068;
-      color: #262115;
-      font-weight: 700;
-      font-size: 16px;
-      letter-spacing: .2px;
-      box-shadow: 0 6px 16px rgba(232,192,104,.28), inset 0 0 0 1px rgba(0,0,0,.15);
-    }
+    :root { color-scheme: dark; }
+    html, body { margin:0; padding:0; background:#0c0c0f; color:#eee; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif; }
+    .wrap { min-height:100dvh; display:grid; place-items:center; padding:24px 16px; }
+    .card { width:min(92vw, 720px); background:#141419; border-radius:24px; box-shadow:0 6px 20px rgba(0,0,0,.35); padding:20px 20px 16px; }
+    .photoBox { background:#101014; border-radius:18px; overflow:hidden; aspect-ratio:1/1; display:grid; place-items:center; border:1px solid rgba(255,255,255,.06); }
+    .photo { width:100%; height:100%; object-fit:cover; display:block; background:#0e0e12; }
+    .caption { margin:14px 2px 4px; font-size:18px; line-height:1.45; color:#eaeaea; word-break:break-word; min-height:1lh; }
+    .hint { margin:8px 2px 18px; font-size:13px; color:#b9b9c6; }
+    .btn { -webkit-tap-highlight-color:transparent; cursor:pointer; width:100%; display:inline-flex; align-items:center; justify-content:center; gap:8px; height:56px; border-radius:16px; border:none; background:#e8c068; color:#262115; font-weight:700; font-size:16px; letter-spacing:.2px; box-shadow:0 6px 16px rgba(232,192,104,.28), inset 0 0 0 1px rgba(0,0,0,.15); }
     .btn:active { transform: translateY(1px); }
-    .empty {
-      font-size: 16px;
-      color: #bdbdc7;
-      text-align: center;
-      padding: 48px 0;
-    }
   </style>
 </head>
 <body>
@@ -102,36 +30,29 @@
   </main>
 
   <script>
-    // ===== 你的反代 Worker 根地址（不要带 query）=====
+    // 你的 Worker 根地址（不要带 query）
     const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-    // ===== 工具：取 query =====
-    const qs = new URLSearchParams(location.search);
+    const qs   = new URLSearchParams(location.search);
     const SPOT = (qs.get('spot') || 'veg').toLowerCase();
     const SID  = (qs.get('sid')  || '').trim();
 
-    // ===== 兜底 CDN 构造（第三方缩略代理）======
-    function toWeserv(url) {
-      return 'https://images.weserv.nl/?url=' + encodeURIComponent(url);
-    }
-    // 走你自己的 Worker 的图片反代
-    function toWorkerImg(url) {
-      // /img?u=原图
+    // 统一生成两级兜底 URL
+    const toWorkerImg = (url) => {
       const u = new URL(API_BASE + '/img');
       u.searchParams.set('u', url);
       return u.toString();
-    }
+    };
+    const toWeserv = (url) => 'https://images.weserv.nl/?url=' + encodeURIComponent(url);
 
-    // ===== 关键修复：安全设置图片源，避免 /img?u= 空参 =====
-    function setPhotoSafe(imgEl, url) {
-      // 如果没有 URL，直接不设置，避免发 /img?u= 导致 400
-      if (!url) {
+    // 安全设置图片：先 Worker，再 weserv；没有 URL 就不发请求
+    function setPhotoSafe(imgEl, rawUrl) {
+      if (!rawUrl) {
         imgEl.removeAttribute('src');
         imgEl.onerror = null;
         imgEl.dataset.step = '';
         return;
       }
-
       imgEl.decoding = 'async';
       imgEl.loading = 'eager';
       imgEl.referrerPolicy = 'no-referrer';
@@ -139,53 +60,43 @@
       delete imgEl.dataset.step;
 
       imgEl.onerror = () => {
-        // 第一阶段：原图失败 → 走 Worker 反代
         if (!imgEl.dataset.step) {
-          imgEl.dataset.step = 'worker';
-          imgEl.src = toWorkerImg(url);
-        }
-        // 第二阶段：Worker 也失败 → 走第三方
-        else if (imgEl.dataset.step === 'worker') {
           imgEl.dataset.step = 'weserv';
-          imgEl.src = toWeserv(url);
+          imgEl.src = toWeserv(rawUrl);
         }
       };
 
-      // 起步先用原图直连（成功就最快；失败才降级）
-      imgEl.src = url;
+      // **先走 Worker 反代**
+      imgEl.src = toWorkerImg(rawUrl);
     }
 
-    // ===== 取列表：先带 sid 请求（让后端过滤自己），失败就不带 sid 重试 =====
+    // 带 sid 先请求，不带 sid 再兜底
     async function getList(spot, sid) {
       const withSid = new URL(API_BASE);
       withSid.searchParams.set('spot', spot);
       withSid.searchParams.set('mode', 'list');
       if (sid) withSid.searchParams.set('sid', sid);
 
-      const res1 = await fetch(withSid.toString(), { cache: 'no-store' }).catch(() => null);
-      if (res1 && res1.ok) {
-        const j = await res1.json();
+      const r1 = await fetch(withSid.toString(), { cache: 'no-store' }).catch(() => null);
+      if (r1 && r1.ok) {
+        const j = await r1.json().catch(() => null);
         if (j && j.status === 200 && Array.isArray(j.data)) return j.data;
       }
 
-      // 无论是 4xx/5xx 还是 shape 不对，都尝试不带 sid 再取一次
       const noSid = new URL(API_BASE);
       noSid.searchParams.set('spot', spot);
       noSid.searchParams.set('mode', 'list');
-
-      const res2 = await fetch(noSid.toString(), { cache: 'no-store' }).catch(() => null);
-      if (res2 && res2.ok) {
-        const j2 = await res2.json();
+      const r2 = await fetch(noSid.toString(), { cache: 'no-store' }).catch(() => null);
+      if (r2 && r2.ok) {
+        const j2 = await r2.json().catch(() => null);
         if (j2 && j2.status === 200 && Array.isArray(j2.data)) return j2.data;
       }
       return [];
     }
 
-    // ===== 简易随机：若后端已过滤，这里只是在空/退化情况下兜住 =====
+    // 保险：前端再过滤一次 sid
     function pickOne(list, sid) {
       if (!Array.isArray(list) || list.length === 0) return null;
-
-      // 额外保险：如果有 sid，再过滤掉一次
       let arr = list;
       if (sid) {
         const filtered = list.filter(x => x && x.id && x.id !== sid);
@@ -194,31 +105,23 @@
       return arr[Math.floor(Math.random() * arr.length)] || null;
     }
 
-    // ===== 入口 =====
     async function boot() {
       const $photo   = document.getElementById('photo');
       const $caption = document.getElementById('caption');
       const $again   = document.getElementById('again');
 
-      // 取数据
       const list = await getList(SPOT, SID);
-
-      // 空数据处理
       if (!list || list.length === 0) {
-        setPhotoSafe($photo, ''); // 清空 src，避免 /img?u=
+        setPhotoSafe($photo, '');
         $caption.textContent = '投稿がまだ少ないみたい…';
         return;
       }
 
       const item = pickOne(list, SID) || list[0];
-
-      // 设置图片&文字
       setPhotoSafe($photo, item?.img || '');
       $caption.textContent = item?.text || '';
 
-      // 再投稿按钮
       $again.addEventListener('click', () => {
-        // 维持原有动线：你可以改成跳转 Jotform
         history.back();
       }, { passive: true });
     }
