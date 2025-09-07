@@ -1,135 +1,179 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+  />
   <title>投稿ガチャ</title>
   <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0; background: #0f0f10; color: #eee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-      Roboto, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
-      display: grid; place-items: center; min-height: 100dvh;
+    :root {
+      --bg: #0d0d0f;
+      --card: #151518;
+      --text: #f2f2f3;
+      --muted: #a0a0a6;
+      --btn: #e8c46a;
+    }
+    html,body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+        "Yu Gothic", Meiryo, sans-serif;
+    }
+    .wrap {
+      max-width: 720px; margin: 0 auto; padding: 20px 16px 40px;
     }
     .card {
-      width: min(92vw, 520px);
-      background: #121315; border-radius: 24px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      background: var(--card);
+      border-radius: 20px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.35);
+      padding: 18px;
     }
-    .photo {
-      width: 100%; aspect-ratio: 1 / 1; background: #15161a; border-radius: 18px; overflow: hidden;
-      display: grid; place-items: center; margin: 6px 0 16px;
+    .imgbox {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #0f0f12;
+      display: grid;
+      place-items: center;
     }
-    .photo img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .meta { font-size: 18px; margin-block: 12px 6px; }
-    .hint { opacity: .7; font-size: 13px; }
+    .imgbox img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+    }
+    .caption {
+      margin-top: 16px; font-size: 18px; font-weight: 600;
+    }
+    .muted { color: var(--muted); font-size: 14px; }
     .btn {
-      display: block; width: 100%; border: none; border-radius: 14px; padding: 16px 20px; margin-top: 16px;
-      background: #eac66d; color: #3b2b06; font-weight: 700; font-size: 16px;
+      margin-top: 18px;
+      display: block; width: 100%;
+      background: var(--btn); color: #1b1b1b;
+      padding: 14px 16px;
+      border-radius: 12px; text-align: center; font-weight: 700;
+      letter-spacing: .02em;
+      user-select: none; -webkit-user-select: none;
     }
+    .center { text-align:center; margin-top: 24px; }
+    .spinner {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 4px solid #222328; border-top-color: #e1e1e6;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <main class="card">
-    <div class="photo"><img id="photo" alt="post photo" decoding="async" /></div>
-    <div class="meta" id="text"></div>
-    <div class="hint">スクリーンショットを保存してね！</div>
-    <button class="btn" id="again">もう一度投稿する</button>
-  </main>
+  <div class="wrap">
+    <div id="card" class="card">
+      <div class="imgbox">
+        <img id="photo" alt="post photo" crossOrigin="anonymous" />
+      </div>
+      <div id="cap" class="caption"></div>
+      <div class="muted">スクリーンショットを保存してね！</div>
+      <div id="btn" class="btn">もう一度投稿する</div>
+    </div>
+    <div id="status" class="center muted"></div>
+  </div>
 
   <script>
-    // 你的 Workers 域
-    const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
+    // 你的 Worker 根地址（不要带结尾斜杠）
+    const WORKER_ORIGIN = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-    // 解析 query
-    const qs = new URLSearchParams(location.search);
-    const spot = (qs.get('spot') || 'veg').toLowerCase();
-    const sid  = (qs.get('sid') || '').trim();
+    // API 基础地址：所有 /?spot=...&mode=list 都通过 Worker
+    const API_BASE = WORKER_ORIGIN;
 
-    const photo = document.getElementById('photo');
-    const textEl = document.getElementById('text');
-    const btn = document.getElementById('again');
+    // 读取 url 参数
+    const q = new URLSearchParams(location.search);
+    const spot = (q.get('spot') || 'veg').toLowerCase();
+    const sid  = (q.get('sid')  || '').trim();
 
-    btn.onclick = () => location.reload();
+    const $photo = document.getElementById('photo');
+    const $cap   = document.getElementById('cap');
+    const $btn   = document.getElementById('btn');
+    const $status= document.getElementById('status');
 
-    // 兜底：weserv（必须去掉协议，只传 host+path+search）
-    const toWeserv = (rawUrl) => {
-      try {
-        const u = new URL(rawUrl);
-        const hostPath = u.host + u.pathname + u.search;
-        return 'https://images.weserv.nl/?url=' + encodeURIComponent(hostPath);
-      } catch {
-        // 解析失败就把协议去掉再传
-        return 'https://images.weserv.nl/?url=' + encodeURIComponent(rawUrl.replace(/^https?:\/\//i, ''));
-      }
-    };
+    function showLoading(text = '読み込み中...') {
+      $status.innerHTML = `<div class="spinner"></div><div style="margin-top:10px">${text}</div>`;
+    }
+    function clearStatus() { $status.textContent = ''; }
+    function toast(msg) { $status.textContent = msg; }
 
-    // 安全设置图片：先 Worker /img，再失败兜底 weserv
-    function setPhotoSafe(imgEl, rawUrl) {
-      if (!rawUrl) {
-        imgEl.removeAttribute('src');
-        imgEl.onerror = null;
-        imgEl.dataset.step = '';
-        return;
-      }
-      imgEl.decoding = 'async';
-      imgEl.loading = 'eager';
-      imgEl.referrerPolicy = 'no-referrer';
-      imgEl.crossOrigin = 'anonymous';
-      delete imgEl.dataset.step;
-
-      imgEl.onerror = () => {
-        // 第一跳失败 -> weserv 兜底一次
-        if (!imgEl.dataset.step) {
-          imgEl.dataset.step = 'weserv';
-          imgEl.src = toWeserv(rawUrl);
-        }
-      };
-
-      // 第一跳走自己 Worker 的 /img 反代，避免直连跨域/防盗链
-      imgEl.src = API_BASE + '/img?u=' + encodeURIComponent(rawUrl);
+    // 关键：图片统一走 Worker 的 /img 反代，避免直连 Jotform
+    function proxiedImageUrl(rawUrl) {
+      return `${WORKER_ORIGIN}/img?u=${encodeURIComponent(rawUrl)}`;
     }
 
-    // 取列表，先带 sid（让 Apps Script 过滤自己），非 200 再尝试不带 sid
     async function fetchList() {
       const url = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}`:''}`;
-      const res = await fetch(url, { credentials: 'omit' });
-      let payload;
-      try { payload = await res.json(); } catch { payload = { status: 500, data: { error: 'bad-json' } }; }
-
-      if (payload && payload.status === 200 && Array.isArray(payload.data)) {
-        return payload.data;
+      const r = await fetch(url, { cache: 'no-store' });
+      const j = await r.json();
+      // Apps Script/Worker 统一把真实状态塞在 JSON 里
+      if (!j || typeof j !== 'object' || !('status' in j)) {
+        throw new Error('bad json shape');
       }
-      // 带 sid 返回了 400/空 -> 再试一次不带 sid（以免你本人那条被服务端过滤后没有候选）
-      const url2 = `${API_BASE}/?spot=${encodeURIComponent(spot)}&mode=list`;
-      const res2 = await fetch(url2, { credentials: 'omit' });
-      try { payload = await res2.json(); } catch { payload = { status: 500, data: { error: 'bad-json' } }; }
-      if (payload && payload.status === 200 && Array.isArray(payload.data)) {
-        // 前端再自行过滤一次（保险），避免抽到自己
-        if (sid) {
-          return payload.data.filter(x => x && x.id && x.id !== sid || (x && !x.id));
-        }
-        return payload.data;
+      if (j.status !== 200) {
+        // 有时候你会故意把 upstream 状态塞进 data 里
+        throw new Error(`upstream ${j.status} ${JSON.stringify(j.data).slice(0,180)}`);
       }
-      return [];
+      const arr = Array.isArray(j.data) ? j.data : [];
+      // 双保险：如果后端没过滤，这里再过滤一次自己
+      const filtered = sid ? arr.filter(x => !x?.id || x.id !== sid) : arr;
+      return filtered;
     }
 
-    function pickOne(list) {
-      if (!list || !list.length) return null;
-      return list[Math.floor(Math.random() * list.length)];
+    function pickOne(arr) {
+      if (!arr.length) return null;
+      const idx = Math.floor(Math.random() * arr.length);
+      return arr[idx];
     }
 
     async function boot() {
-      const list = await fetchList();
-      const item = pickOne(list);
-      if (!item) {
-        textEl.textContent = '投稿がまだ少ないみたい…';
-        setPhotoSafe(photo, '');
-        return;
+      try {
+        showLoading('読み込み中...');
+        const list = await fetchList();
+        if (!list.length) {
+          toast('投稿がまだ少ないみたい...');
+          $photo.src = '';
+          $cap.textContent = '';
+          return;
+        }
+        const item = pickOne(list);
+        // 渲染
+        $cap.textContent = item?.text || '';
+        const imgUrl = proxiedImageUrl(item.img);
+        // 先清空再赋值，避免 onload 不触发
+        $photo.src = '';
+        $photo.onload = () => { clearStatus(); };
+        $photo.onerror = () => {
+          toast('画像の読み込みに失敗しました');
+        };
+        $photo.src = imgUrl;
+      } catch (e) {
+        toast(`読み込みに失敗しました。再読み込みしてください。`);
+        console.warn('[gacha] fail:', e);
       }
-      textEl.textContent = item.text || '';
-      setPhotoSafe(photo, item.img || '');
     }
 
+    // 再投稿按钮（保留你的原链接）
+    $btn.addEventListener('click', () => {
+      const base = 'https://zhuh49092.github.io/farm-gacha/index.html';
+      const url = new URL(base);
+      url.searchParams.set('spot', spot);
+      location.href = url.toString();
+    });
+
+    // 进入即启动
     boot();
   </script>
 </body>
