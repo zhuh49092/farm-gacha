@@ -1,39 +1,190 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gacha Test</title>
-</head>
-<body style="background:#000; color:#fff; font-family:sans-serif;">
-
-<h2>Gacha Test (direct Google Script)</h2>
-<div id="result">Loading...</div>
-
-<script>
-(async function() {
-  const API = "https://script.google.com/macros/s/AKfycbzohTsM5dhSUFTMTgc2c8OEoOJsIHZpz00aSl1FIgF6rjsS_MRPr_uWP1o-nlNttA0IVw/exec?spot=veg&mode=list";
-
-  try {
-    const r = await fetch(API);
-    const j = await r.json();
-    console.log("raw json:", j);
-
-    if (j && j.status === 200 && Array.isArray(j.data)) {
-      const one = j.data[Math.floor(Math.random() * j.data.length)];
-      document.getElementById("result").innerHTML = `
-        <p><img src="${one.img}" style="max-width:300px; display:block;"></p>
-        <p>${one.text || "(no text)"}</p>
-      `;
-    } else {
-      document.getElementById("result").textContent = "unexpected response: " + JSON.stringify(j);
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Gacha Test (direct Google Script + mobile-safe)</title>
+  <style>
+    :root {
+      color-scheme: dark;
     }
-  } catch(err) {
-    document.getElementById("result").textContent = "fetch error: " + err;
-    console.error(err);
-  }
-})();
-</script>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: #0f0f10;
+      color: #f5f6f7;
+      min-height: 100vh;
+      display: grid;
+      place-items: start center;
+      padding: 24px 16px 48px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 16px;
+      color: #d7d9dd;
+    }
+    .card {
+      width: min(680px, 100%);
+      background: #141417;
+      border: 1px solid #232329;
+      border-radius: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+    .media {
+      width: 100%;
+      background: #0c0c0e;
+      display: grid;
+      place-items: center;
+    }
+    .media img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      border-radius: 0;
+      aspect-ratio: auto;
+      /* 防止父容器约束导致拉伸 */
+      object-fit: contain;
+    }
+    .body {
+      padding: 14px 16px 18px;
+      line-height: 1.6;
+      color: #dfe2e6;
+      word-break: break-word;
+    }
+    .meta {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #9aa1ab;
+    }
+    .error {
+      margin-top: 12px;
+      color: #ff9aa8;
+      font-size: 14px;
+      word-break: break-word;
+    }
+    .foot {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #aeb4bd;
+      opacity: .8;
+      text-align: center;
+    }
+    .hint {
+      margin: 10px 0 16px;
+      font-size: 13px;
+      color: #9aa1ab;
+    }
+  </style>
+</head>
+<body>
+  <div style="width:min(680px,100%)">
+    <h1>Gacha Test (mobile-safe)</h1>
+    <div class="hint">URL 例：<code>?spot=veg&amp;sid=63298…</code>（带 <code>sid</code> 可排除自己的投稿）</div>
+    <div id="card" class="card">
+      <div class="media" style="min-height: 220px; color:#9aa1ab;">読み込み中...</div>
+      <div class="body"></div>
+    </div>
+    <div id="err" class="error"></div>
+    <div class="foot">画像読み込み対策：no-referrer / URL エンコード / フォールバック代理</div>
+  </div>
 
+  <script>
+    /* ===== 1) 配置：把 API_BASE 改成你的 Google Script 正式或测试部署 URL ===== */
+    // ✅ 建议直接用“测试部署”/“正式部署”里的 Web アプリ URL（以 /exec 结尾）
+    const API_BASE = 'https://script.google.com/macros/s/AKfycbzohTsM5dhSUFTMTgc2c8OEoOJsIHZpz00aSl1FIgF6rjsS_MRPr_uWP1o-nlNttA0IVw/exec';
+
+    /* ===== 2) 读取 URL 参数 ===== */
+    const qs = new URLSearchParams(location.search);
+    const spot = (qs.get('spot') || 'veg').toLowerCase();
+    const sid  = (qs.get('sid')  || '').trim();
+
+    /* ===== 3) 工具：渲染一条投稿，加入移动端防裂三步 ===== */
+    function renderOne(item) {
+      const card = document.getElementById('card');
+      const media = card.querySelector('.media');
+      const body  = card.querySelector('.body');
+
+      media.textContent = '';  // 清空占位
+      body.textContent  = '';
+
+      // --- 三步：统一编码 + 禁止携带 referrer + 失败兜底代理 ---
+      const raw = String(item.img || '').trim();
+      const safe = encodeURI(raw); // 统一编码：处理空格/非 ASCII
+
+      const img = new Image();
+      img.alt = 'post photo';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';     // 关键：避免防盗链
+      img.style.maxWidth  = '100%';
+      img.style.height    = 'auto';
+      img.style.display   = 'block';
+
+      let triedFallback = false;
+      img.onerror = () => {
+        if (triedFallback) return;
+        triedFallback = true;
+        // 失败时切到无状态代理（仅一次）
+        try {
+          const u = new URL(safe);
+          img.src = `https://images.weserv.nl/?url=${encodeURIComponent(u.host + u.pathname + u.search)}`;
+        } catch {
+          img.src = `https://images.weserv.nl/?url=${encodeURIComponent(safe.replace(/^https?:\/\//,''))}`;
+        }
+      };
+
+      img.src = safe;
+
+      // 写入到卡片
+      media.appendChild(img);
+      const text = document.createElement('div');
+      text.textContent = item.text || '(no text)';
+      body.appendChild(text);
+
+      // 小元信息（可选）
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = `ID: ${item.id || '(なし)'} | spot: ${spot}`;
+      body.appendChild(meta);
+    }
+
+    /* ===== 4) 拉取列表并随机取一条；若带 sid 则排除自己 ===== */
+    async function boot() {
+      const card = document.getElementById('card');
+      const media = card.querySelector('.media');
+      const err   = document.getElementById('err');
+
+      media.textContent = '読み込み中...';
+      err.textContent = '';
+
+      const url = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list`;
+
+      try {
+        const r = await fetch(url, { cache: 'no-store' });
+        const j = await r.json(); // 你的脚本返回 {status:200, data:[...]}
+        if (j.status !== 200 || !Array.isArray(j.data)) {
+          throw new Error('unexpected response: ' + JSON.stringify(j));
+        }
+        let list = j.data;
+        if (sid) list = list.filter(x => String(x.id || '') !== sid);
+        // 兜底：如果排除后为空，则回退到原列表
+        if (list.length === 0) list = j.data;
+
+        if (list.length === 0) {
+          media.textContent = '投稿がまだ少ないみたい…';
+          return;
+        }
+        const one = list[Math.floor(Math.random() * list.length)];
+        renderOne(one);
+      } catch (e) {
+        console.error(e);
+        media.textContent = '読み込みに失敗しました。再読み込みしてください。';
+        err.textContent = 'ネットワークエラー：データを取得できません。';
+      }
+    }
+
+    boot();
+  </script>
 </body>
 </html>
