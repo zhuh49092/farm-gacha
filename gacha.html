@@ -21,7 +21,7 @@
 <h2>投稿ガチャ</h2>
 <div class="card" id="result">読み込み中...</div>
 
-<button onclick="reroll()">もう一回ガチャ</button>
+<!-- 只保留再投稿按钮 -->
 <button onclick="location.href='https://docs.google.com/forms/...yourFormURL...'">もう一度投稿する</button>
 
 <div id="error"></div>
@@ -73,10 +73,6 @@ async function getOne() {
     console.error(err);
     document.getElementById("error").textContent = "ネットワークエラー: データを取得できません";
   }
-}
-
-function reroll() {
-  getOne();
 }
 
 // 初回実行
