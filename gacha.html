@@ -2,146 +2,226 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+  />
   <title>投稿ガチャ</title>
   <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0; background:#0b0b0e; color:#eaeaea; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
-      display:flex; justify-content:center; min-height:100dvh;
+    :root {
+      color-scheme: dark;
     }
-    .wrap { width:min(560px, 92vw); padding:28px 0 40px; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0c0c0f;
+      color: #eee;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
+    }
+    .wrap {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+    }
     .card {
-      background:linear-gradient(180deg, #15161a, #101114);
-      border-radius:20px; padding:18px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      width: min(92vw, 720px);
+      background: #141419;
+      border-radius: 24px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.35);
+      padding: 20px 20px 16px;
     }
     .photoBox {
-      background:#121316; border-radius:16px; aspect-ratio:1/1; overflow:hidden;
-      display:flex; align-items:center; justify-content:center;
+      background: #101014;
+      border-radius: 18px;
+      overflow: hidden;
+      aspect-ratio: 1 / 1;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.06);
     }
-    img.photo {
-      width:100%; height:100%; object-fit:contain; display:block; image-rendering:auto;
+    .photo {
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #0e0e12;
     }
-    .text { margin:16px 8px 4px; font-size:20px; line-height:1.5; }
-    .hint { opacity:.7; font-size:14px; margin:12px 8px 22px; }
-    .row { display:flex; gap:12px; }
+    .caption {
+      margin: 14px 2px 4px;
+      font-size: 18px;
+      line-height: 1.45;
+      color: #eaeaea;
+      word-break: break-word;
+      min-height: 1lh;
+    }
+    .hint {
+      margin: 8px 2px 18px;
+      font-size: 13px;
+      color: #b9b9c6;
+    }
     .btn {
-      flex:1; padding:14px 16px; border-radius:999px; border:none; cursor:pointer;
-      background:#f5c768; color:#221a03; font-weight:700; font-size:16px;
-      box-shadow:0 8px 18px rgba(245,199,104,.28);
+      -webkit-tap-highlight-color: transparent;
+      cursor: pointer;
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 56px;
+      border-radius: 16px;
+      border: none;
+      background: #e8c068;
+      color: #262115;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: .2px;
+      box-shadow: 0 6px 16px rgba(232,192,104,.28), inset 0 0 0 1px rgba(0,0,0,.15);
     }
-    .loading { text-align:center; padding:40px 0; opacity:.8; }
+    .btn:active { transform: translateY(1px); }
+    .empty {
+      font-size: 16px;
+      color: #bdbdc7;
+      text-align: center;
+      padding: 48px 0;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div id="stage" class="card">
+  <main class="wrap">
+    <section class="card">
       <div class="photoBox">
         <img id="photo" class="photo" alt="post photo" />
       </div>
-      <div id="text" class="text"></div>
+      <div id="caption" class="caption"></div>
       <div class="hint">スクリーンショットを保存してね！</div>
-      <div class="row">
-        <button id="retry" class="btn">もう一度投稿する</button>
-      </div>
-      <div id="loading" class="loading" style="display:none;">読み込み中...</div>
-    </div>
-  </div>
+      <button id="again" class="btn">もう一度投稿する</button>
+    </section>
+  </main>
 
   <script>
-    // 你的 Worker 域名（结尾要有 /）
-    const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev/';
+    // ===== 你的反代 Worker 根地址（不要带 query）=====
+    const API_BASE = 'https://farm-gacha-proxy.zhuh49092.workers.dev';
 
-    // 兜底转换
-    const toWeserv = (u) => 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//,''));
-    const toWorkerImg = (u) => API_BASE + 'img?u=' + encodeURIComponent(u);
+    // ===== 工具：取 query =====
+    const qs = new URLSearchParams(location.search);
+    const SPOT = (qs.get('spot') || 'veg').toLowerCase();
+    const SID  = (qs.get('sid')  || '').trim();
 
-    // 解析 URL 参数
-    function qs(k, def='') {
-      const v = new URLSearchParams(location.search).get(k);
-      return v == null ? def : v;
+    // ===== 兜底 CDN 构造（第三方缩略代理）======
+    function toWeserv(url) {
+      return 'https://images.weserv.nl/?url=' + encodeURIComponent(url);
     }
-    const spot = (qs('spot','veg') + '').toLowerCase();
-    const sid  = (qs('sid','') + '').trim();
+    // 走你自己的 Worker 的图片反代
+    function toWorkerImg(url) {
+      // /img?u=原图
+      const u = new URL(API_BASE + '/img');
+      u.searchParams.set('u', url);
+      return u.toString();
+    }
 
-    const $photo = document.getElementById('photo');
-    const $text  = document.getElementById('text');
-    const $loading = document.getElementById('loading');
-    const $retry = document.getElementById('retry');
-
-    function showLoading(on) { $loading.style.display = on ? '' : 'none'; }
-
-    // 关键：图片安全加载（原图 -> Worker反代 -> weserv）
+    // ===== 关键修复：安全设置图片源，避免 /img?u= 空参 =====
     function setPhotoSafe(imgEl, url) {
+      // 如果没有 URL，直接不设置，避免发 /img?u= 导致 400
+      if (!url) {
+        imgEl.removeAttribute('src');
+        imgEl.onerror = null;
+        imgEl.dataset.step = '';
+        return;
+      }
+
       imgEl.decoding = 'async';
       imgEl.loading = 'eager';
       imgEl.referrerPolicy = 'no-referrer';
+      imgEl.crossOrigin = 'anonymous';
       delete imgEl.dataset.step;
 
       imgEl.onerror = () => {
+        // 第一阶段：原图失败 → 走 Worker 反代
         if (!imgEl.dataset.step) {
           imgEl.dataset.step = 'worker';
-          imgEl.src = toWorkerImg(url);      // 第一次失败：走 Worker
-        } else if (imgEl.dataset.step === 'worker') {
+          imgEl.src = toWorkerImg(url);
+        }
+        // 第二阶段：Worker 也失败 → 走第三方
+        else if (imgEl.dataset.step === 'worker') {
           imgEl.dataset.step = 'weserv';
-          imgEl.src = toWeserv(url);         // 仍失败：走 weserv
-        } // 第三次失败则保持错误，不再死循环
+          imgEl.src = toWeserv(url);
+        }
       };
 
-      imgEl.src = url; // 先尝试原图
+      // 起步先用原图直连（成功就最快；失败才降级）
+      imgEl.src = url;
     }
 
-    async function fetchList() {
-      const url = `${API_BASE}?spot=${encodeURIComponent(spot)}&mode=list${sid ? `&sid=${encodeURIComponent(sid)}` : ''}`;
-      const r = await fetch(url, { cache: 'no-store' });
-      const j = await r.json().catch(() => ({}));
-      return j;
-    }
+    // ===== 取列表：先带 sid 请求（让后端过滤自己），失败就不带 sid 重试 =====
+    async function getList(spot, sid) {
+      const withSid = new URL(API_BASE);
+      withSid.searchParams.set('spot', spot);
+      withSid.searchParams.set('mode', 'list');
+      if (sid) withSid.searchParams.set('sid', sid);
 
-    function pickOne(list) {
-      return list.length ? list[Math.floor(Math.random() * list.length)] : null;
-    }
-
-    async function boot() {
-      showLoading(true);
-      try {
-        const res = await fetchList();
-        // 兼容 Apps Script/Worker 的响应格式：{ status, data }
-        let list = Array.isArray(res) ? res : (res && res.data);
-        if (!Array.isArray(list)) list = [];
-
-        // 二次过滤：前端也排除 sid，确保“绝不会抽到自己”
-        const my = sid;
-        if (my) {
-          list = list.filter(x =>
-            x && x.img && ( !x.id || (x.id && String(x.id) !== String(my)) )
-          );
-        }
-
-        const item = pickOne(list);
-        if (!item) {
-          $text.textContent = '投稿がまだ少ないみたい…';
-          setPhotoSafe($photo, ''); // 清空
-          showLoading(false);
-          return;
-        }
-
-        // 渲染
-        setPhotoSafe($photo, item.img);
-        $text.textContent = item.text || '';
-      } catch (e) {
-        console.warn('[gacha] error ->', e);
-        $text.textContent = '読み込みに失敗しました。再読み込みしてください。';
-      } finally {
-        showLoading(false);
+      const res1 = await fetch(withSid.toString(), { cache: 'no-store' }).catch(() => null);
+      if (res1 && res1.ok) {
+        const j = await res1.json();
+        if (j && j.status === 200 && Array.isArray(j.data)) return j.data;
       }
+
+      // 无论是 4xx/5xx 还是 shape 不对，都尝试不带 sid 再取一次
+      const noSid = new URL(API_BASE);
+      noSid.searchParams.set('spot', spot);
+      noSid.searchParams.set('mode', 'list');
+
+      const res2 = await fetch(noSid.toString(), { cache: 'no-store' }).catch(() => null);
+      if (res2 && res2.ok) {
+        const j2 = await res2.json();
+        if (j2 && j2.status === 200 && Array.isArray(j2.data)) return j2.data;
+      }
+      return [];
     }
 
-    $retry.onclick = () => {
-      const url = new URL(location.href);
-      url.searchParams.set('t', Date.now().toString(36)); // cache buster
-      location.href = url.toString();
-    };
+    // ===== 简易随机：若后端已过滤，这里只是在空/退化情况下兜住 =====
+    function pickOne(list, sid) {
+      if (!Array.isArray(list) || list.length === 0) return null;
+
+      // 额外保险：如果有 sid，再过滤掉一次
+      let arr = list;
+      if (sid) {
+        const filtered = list.filter(x => x && x.id && x.id !== sid);
+        if (filtered.length > 0) arr = filtered;
+      }
+      return arr[Math.floor(Math.random() * arr.length)] || null;
+    }
+
+    // ===== 入口 =====
+    async function boot() {
+      const $photo   = document.getElementById('photo');
+      const $caption = document.getElementById('caption');
+      const $again   = document.getElementById('again');
+
+      // 取数据
+      const list = await getList(SPOT, SID);
+
+      // 空数据处理
+      if (!list || list.length === 0) {
+        setPhotoSafe($photo, ''); // 清空 src，避免 /img?u=
+        $caption.textContent = '投稿がまだ少ないみたい…';
+        return;
+      }
+
+      const item = pickOne(list, SID) || list[0];
+
+      // 设置图片&文字
+      setPhotoSafe($photo, item?.img || '');
+      $caption.textContent = item?.text || '';
+
+      // 再投稿按钮
+      $again.addEventListener('click', () => {
+        // 维持原有动线：你可以改成跳转 Jotform
+        history.back();
+      }, { passive: true });
+    }
 
     boot();
   </script>
