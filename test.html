@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gacha Test</title>
+</head>
+<body style="background:#000; color:#fff; font-family:sans-serif;">
+
+<h2>Gacha Test (direct Google Script)</h2>
+<div id="result">Loading...</div>
+
+<script>
+(async function() {
+  const API = "https://script.google.com/macros/s/AKfycbzIV32CTWpgHjtNBeQyt3BGhMHGhqxxFcDBTvWKlTd2utmvXRXKthp-W92qhLu4PPDllw/exec?spot=veg&mode=list";
+
+  try {
+    const r = await fetch(API);
+    const j = await r.json();
+    console.log("raw json:", j);
+
+    if (j && j.status === 200 && Array.isArray(j.data)) {
+      const one = j.data[Math.floor(Math.random() * j.data.length)];
+      document.getElementById("result").innerHTML = `
+        <p><img src="${one.img}" style="max-width:300px; display:block;"></p>
+        <p>${one.text || "(no text)"}</p>
+      `;
+    } else {
+      document.getElementById("result").textContent = "unexpected response: " + JSON.stringify(j);
+    }
+  } catch(err) {
+    document.getElementById("result").textContent = "fetch error: " + err;
+    console.error(err);
+  }
+})();
+</script>
+
+</body>
+</html>
