@@ -7,12 +7,13 @@
   <style>
     :root{
       --overlap:14px;
+      --sticker-space: clamp(120px, 22vw, 160px);
     }
     body{
       background:#000; color:#fff; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
       text-align:center; margin:0; padding:24px 12px;
     }
-    .card{ background:#111; margin:16px auto 24px; padding:16px; border-radius:12px; max-width:420px; }
+    .card{ background:#111; margin: calc(16px + var(--sticker-space)) auto 24px; padding:16px; border-radius:12px; max-width:420px; }
     .card img{ max-width:100%; border-radius:8px; }
     button{
       background:#f2c94c; border:none; padding:10px 20px; border-radius:8px;
