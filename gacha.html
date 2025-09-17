@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>投稿ガチャ</title>
   <style>
-    /* ===== 基础样式（与你现有风格一致） ===== */
     :root{
-      --overlap:14px;            /* 贴纸与图片的轻微重叠距离，可按需调整 */
+      --overlap:14px;
     }
     body{
       background:#000; color:#fff; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
@@ -15,8 +14,6 @@
     }
     .card{ background:#111; margin:16px auto 24px; padding:16px; border-radius:12px; max-width:420px; }
     .card img{ max-width:100%; border-radius:8px; }
-    h2{ margin:8px 0 12px; font-size:clamp(20px,5vw,28px); }
-
     button{
       background:#f2c94c; border:none; padding:10px 20px; border-radius:8px;
       font-size:16px; cursor:pointer; margin:8px;
@@ -25,18 +22,16 @@
     canvas#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:999; }
 
     /* ===== 贴纸：定位与动画 ===== */
-    #title-wrap{ position:relative; display:inline-block; }
     #sticker{
       position:absolute;
       left:50%;
       transform:translateX(-50%);
-      top:-30vh;                           /* 从顶部外开始 */
-      width:clamp(90px,18vw,140px);        /* 移动端自适应尺寸 */
-      z-index:10;                          /* 盖在标题/图片之上 */
+      top:-30vh;
+      width:clamp(90px,18vw,140px);
+      z-index:10;
       pointer-events:none;
       opacity:0;
     }
-    /* 下落 + 轻微回弹的组合动画 */
     #sticker.drop{
       animation:
         stickerDrop 0.85s cubic-bezier(.22,.85,.34,1) forwards,
@@ -55,9 +50,6 @@
 </head>
 <body>
 
-  <!-- 给标题一个定位容器，作为贴纸的落点坐标系 -->
-  <div id="title-wrap"><h2 id="title">投稿ガチャ</h2></div>
-
   <div class="card" id="result">読み込み中...</div>
 
   <button onclick="location.href='https://docs.google.com/forms/...yourFormURL...'">もう一度投稿する</button>
@@ -65,89 +57,68 @@
   <div id="error"></div>
   <canvas id="confetti"></canvas>
 
-  <!-- 贴纸元素（初始隐藏），src 运行时注入 -->
+  <!-- 贴纸元素 -->
   <img id="sticker" alt="sticker"/>
 
   <script>
-    /* ================== 配置区 ================== */
-    // Apps Script API（保持你原来使用的接口）
     const API_BASE = "https://script.google.com/macros/s/AKfycbzohTsM5dhSUFTMTgc2c8OEoOJsIHZpz00aSl1FIgF6rjsS_MRPr_uWP1o-nlNttA0IVw/exec";
 
-    // URL 参数：spot（veg|dairy|staple），sid（过滤自己的投稿）
     const urlParams = new URLSearchParams(window.location.search);
     const spot = (urlParams.get("spot") || "veg").toLowerCase();
     const sid  = urlParams.get("sid") || "";
 
-    // 贴纸资源：每个 spot 10 张，命名 sticker-01 ~ sticker-10
     const STICKER_COUNT = 10;
     const VALID_SPOTS = ["veg","dairy","staple"];
     function randomStickerPath(spotName){
       const s = VALID_SPOTS.includes(spotName) ? spotName : "veg";
-      const n = Math.floor(Math.random() * STICKER_COUNT) + 1; // 1..10
+      const n = Math.floor(Math.random() * STICKER_COUNT) + 1;
       const two = n.toString().padStart(2,"0");
       return `./assets/stickers/${s}/sticker-${two}.png`;
     }
 
-    /* ================== 第一次彩纸（保持原样：两侧喷） ================== */
     function fireConfetti() {
       const duration = 1500;
       const end = Date.now() + duration;
       (function frame() {
-        // 保持你原先的参数（尺寸、密度、颜色）
         confetti({ particleCount: 3, angle: 60,  spread: 55, origin: { x: 0 } });
         confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
         if (Date.now() < end) requestAnimationFrame(frame);
       })();
     }
 
-    /* ================== 第二次彩纸（顶部飘落，仅改变方向） ================== */
     function fireConfettiTop() {
       const duration = 1200;
       const end = Date.now() + duration;
       (function frame() {
-        // 尺寸、密度、颜色不变；从顶部不同位置飘落形成差异
         confetti({
           particleCount: 3,
           spread: 55,
-          origin: { x: Math.random(), y: 0 } // 顶部任意位置
+          origin: { x: Math.random(), y: 0 }
         });
         if (Date.now() < end) requestAnimationFrame(frame);
       })();
     }
 
-    /* ================== 贴纸：预加载 + 掉落到标题 ================== */
     function runStickerSequence() {
-      const wrap = document.getElementById("title-wrap");
       const imgEl = document.getElementById("sticker");
       const path = randomStickerPath(spot);
-
-      // 预加载，避免空白
       const pre = new Image();
       pre.onload = () => {
         imgEl.src = path;
-
-        // 计算终点：标题底部下方少量（与下方图片有轻微重叠）
-        const endPx = Math.max(0, wrap.offsetHeight - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--overlap')));
+        // 落点：距离顶部 60px（可调整）+ 重叠偏移
+        const endPx = 60 - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--overlap'));
         imgEl.style.setProperty('--sticker-end', endPx + 'px');
-
-        // 触发动画
-        imgEl.classList.remove('drop'); // 允许重复播放
-        void imgEl.offsetWidth;         // 强制重排，重置动画
+        imgEl.classList.remove('drop');
+        void imgEl.offsetWidth;
         imgEl.classList.add('drop');
-
         imgEl.addEventListener('animationend', () => {
-          // 第二次彩纸（顶部飘落）
           fireConfettiTop();
         }, { once:true });
       };
-      pre.onerror = () => {
-        // 如果贴纸加载失败，仍给一次顶部彩纸，保证庆祝不缺席
-        fireConfettiTop();
-      };
+      pre.onerror = () => fireConfettiTop();
       pre.src = path;
     }
 
-    /* ================== 抽取一条投稿并渲染（保留现有顺序） ================== */
     async function getOne() {
       const result = document.getElementById("result");
       const error  = document.getElementById("error");
@@ -160,21 +131,15 @@
         const j = await r.json();
 
         if (j.status === 200 && Array.isArray(j.data)) {
-          // 过滤自己的投稿
           let list = j.data.filter(x => !sid || x.id !== sid);
-          if (list.length === 0) list = j.data; // 全被过滤则回退
-
+          if (list.length === 0) list = j.data;
           const one = list[Math.floor(Math.random() * list.length)];
           result.innerHTML = `
             <p><img src="${one.img}" alt="post photo"></p>
             <p>${one.text ? one.text : "(no text)"}</p>
           `;
-
-          // 先播第一次（两侧喷）——保持原样
           fireConfetti();
-          // 接着执行贴纸 + 第二次彩纸（顶部飘落）
           runStickerSequence();
-
         } else {
           error.textContent = "データ取得エラー: " + JSON.stringify(j);
         }
@@ -184,11 +149,8 @@
       }
     }
 
-    // 初次进入
     getOne();
   </script>
-
-  <!-- confetti library（与你现有版本一致） -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </body>
 </html>
