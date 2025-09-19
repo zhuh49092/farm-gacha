@@ -32,7 +32,7 @@
     #sticker{
       position:absolute;
       left:50%;
-      /* 初始就按 1.1 放大；注意所有动画里的 transform 都带上 scale 以避免被覆盖 */
+      /* 初始就按 1.1 放大；所有动画里的 transform 都带上 scale，避免相互覆盖 */
       transform:translateX(-50%) scale(var(--sticker-scale));
       top:-30vh;
       width:clamp(90px,18vw,140px);
@@ -65,46 +65,11 @@
       50%  { transform:translateX(-50%) translateY(-6px) scale(var(--sticker-scale)); }
       100% { transform:translateX(-50%) translateY(0)    scale(var(--sticker-scale)); }
     }
-
-    /* ===== 全屏加载页（画面中央） ===== */
-    #loading-overlay{
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      display: flex;                /* 初始显示 */
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 18px;
-      z-index: 2000;
-    }
-    #loading-overlay .spinner{
-      width: clamp(100px, 28vw, 160px);
-      height: auto;
-      animation: spin 1.2s linear infinite;
-      filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
-    }
-    #loading-overlay .label{
-      font-size: 18px;
-      color: #fff;
-      letter-spacing: .05em;
-      opacity: .9;
-    }
-    @keyframes spin{
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
   </style>
 </head>
 <body>
 
-  <!-- 全屏加载页：与投稿/贴纸完全独立 -->
-  <div id="loading-overlay">
-    <img class="spinner" src="./assets/ui/gacha-machine.png" alt="gacha machine">
-    <div class="label">ガチャ中……</div>
-  </div>
-
-  <div class="card" id="result"></div>
+  <div class="card" id="result">読み込み中...</div>
 
   <button onclick="location.href='https://docs.google.com/forms/...yourFormURL...'">もう一度投稿する</button>
 
@@ -155,27 +120,32 @@
       })();
     }
 
-    /* 贴纸：预加载 + 掉落到预定位置；落定后进入“浮动”并触发二次彩纸 */
+    /* 贴纸：预加载 + 掉落到预定位置；在回弹动画结束时进入“浮动”，并触发二次彩纸 */
     function runStickerSequence() {
       const imgEl = document.getElementById("sticker");
       const path = randomStickerPath(spot);
       const pre = new Image();
       pre.onload = () => {
         imgEl.src = path;
+
         // 落点：距离顶部 60px（可调整） - 轻微重叠
         const endPx = 60 - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--overlap'));
         imgEl.style.setProperty('--sticker-end', endPx + 'px');
 
         // 重置并播放“掉落+回弹”
-        imgEl.classList.remove('drop','float');
-        void imgEl.offsetWidth;  // 允许重复播放
+        imgEl.classList.remove('drop','float');  // 确保可重复播放
+        void imgEl.offsetWidth;                  // 触发重排
         imgEl.classList.add('drop');
 
-        // 掉落回弹完成后：添加“浮动”动画；并播第二次彩纸
-        imgEl.addEventListener('animationend', () => {
-          imgEl.classList.add('float'); // 进入循环上下浮动
-          fireConfettiTop();
-        }, { once:true });
+        // 只在第二段动画 stickerBounce 结束后再进入“浮动”，避免中途状态导致消失
+        const onEnd = (e) => {
+          if (e.animationName === 'stickerBounce') {
+            imgEl.classList.add('float'); // 开始持续上下浮动
+            fireConfettiTop();            // 第二次彩纸
+            imgEl.removeEventListener('animationend', onEnd);
+          }
+        };
+        imgEl.addEventListener('animationend', onEnd);
       };
       pre.onerror = () => fireConfettiTop();
       pre.src = path;
@@ -184,9 +154,7 @@
     async function getOne() {
       const result = document.getElementById("result");
       const error  = document.getElementById("error");
-
-      // 进入时保持 loading-overlay 显示
-      document.getElementById("loading-overlay").style.display = "flex";
+      result.textContent = "読み込み中...";
       error.textContent = "";
 
       try {
@@ -198,10 +166,6 @@
           let list = j.data.filter(x => !sid || x.id !== sid);
           if (list.length === 0) list = j.data;
           const one = list[Math.floor(Math.random() * list.length)];
-
-          // 数据已到：隐藏加载页
-          document.getElementById("loading-overlay").style.display = "none";
-
           result.innerHTML = `
             <p><img src="${one.img}" alt="post photo"></p>
             <p>${one.text ? one.text : "(no text)"}</p>
@@ -209,11 +173,9 @@
           fireConfetti();
           runStickerSequence();
         } else {
-          document.getElementById("loading-overlay").style.display = "none";
           error.textContent = "データ取得エラー: " + JSON.stringify(j);
         }
       } catch (err) {
-        document.getElementById("loading-overlay").style.display = "none";
         console.error(err);
         error.textContent = "ネットワークエラー: データを取得できません";
       }
