@@ -8,6 +8,7 @@
     :root{
       --overlap:14px;
       --sticker-space: clamp(120px, 22vw, 160px); /* 贴纸顶部预留空间 */
+      --sticker-scale: 1.1;                       /* 贴纸整体放大 10% */
     }
     body{
       background:#000; color:#fff; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
@@ -31,13 +32,16 @@
     #sticker{
       position:absolute;
       left:50%;
-      transform:translateX(-50%);
+      /* 初始就按 1.1 放大；注意所有动画里的 transform 都带上 scale 以避免被覆盖 */
+      transform:translateX(-50%) scale(var(--sticker-scale));
       top:-30vh;
       width:clamp(90px,18vw,140px);
       z-index:10;
       pointer-events:none;
       opacity:0;
+      will-change: transform, top, opacity;
     }
+    /* 掉落 + 轻微回弹（一次性） */
     #sticker.drop{
       animation:
         stickerDrop 0.85s cubic-bezier(.22,.85,.34,1) forwards,
@@ -48,9 +52,18 @@
       to  { top: var(--sticker-end, 0px); opacity:1; }
     }
     @keyframes stickerBounce{
-      0%   { transform:translateX(-50%) translateY(0); }
-      60%  { transform:translateX(-50%) translateY(-6px); }
-      100% { transform:translateX(-50%) translateY(0); }
+      0%   { transform:translateX(-50%) translateY(0)    scale(var(--sticker-scale)); }
+      60%  { transform:translateX(-50%) translateY(-6px) scale(var(--sticker-scale)); }
+      100% { transform:translateX(-50%) translateY(0)    scale(var(--sticker-scale)); }
+    }
+    /* 落定后的“上下浮动”（循环） */
+    #sticker.float{
+      animation: stickerFloat 2.8s ease-in-out infinite;
+    }
+    @keyframes stickerFloat{
+      0%   { transform:translateX(-50%) translateY(0)    scale(var(--sticker-scale)); }
+      50%  { transform:translateX(-50%) translateY(-6px) scale(var(--sticker-scale)); }
+      100% { transform:translateX(-50%) translateY(0)    scale(var(--sticker-scale)); }
     }
 
     /* ===== 全屏加载页（画面中央） ===== */
@@ -142,7 +155,7 @@
       })();
     }
 
-    /* 贴纸：预加载 + 掉落到预定位置 */
+    /* 贴纸：预加载 + 掉落到预定位置；落定后进入“浮动”并触发二次彩纸 */
     function runStickerSequence() {
       const imgEl = document.getElementById("sticker");
       const path = randomStickerPath(spot);
@@ -152,10 +165,15 @@
         // 落点：距离顶部 60px（可调整） - 轻微重叠
         const endPx = 60 - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--overlap'));
         imgEl.style.setProperty('--sticker-end', endPx + 'px');
-        imgEl.classList.remove('drop');
+
+        // 重置并播放“掉落+回弹”
+        imgEl.classList.remove('drop','float');
         void imgEl.offsetWidth;  // 允许重复播放
         imgEl.classList.add('drop');
+
+        // 掉落回弹完成后：添加“浮动”动画；并播第二次彩纸
         imgEl.addEventListener('animationend', () => {
+          imgEl.classList.add('float'); // 进入循环上下浮动
           fireConfettiTop();
         }, { once:true });
       };
