@@ -31,7 +31,7 @@
     #sticker{
       position:absolute;
       left:50%;
-      transform:translateX(-50%) scale(2.0);
+      transform:translateX(-50%) scale(1.5);
       top:-30vh;
       width:clamp(90px,18vw,140px);
       z-index:10;
@@ -48,9 +48,9 @@
       to  { top: var(--sticker-end, 0px); opacity:1; }
     }
     @keyframes stickerBounce{
-      0%   { transform:translateX(-50%) translateY(0); }
-      60%  { transform:translateX(-50%) translateY(-6px); }
-      100% { transform:translateX(-50%) translateY(0); }
+      0%   { transform:translateX(-50%) translateY(0) scale(1.5); }
+      60%  { transform:translateX(-50%) translateY(-6px) scale(1.5); }
+      100% { transform:translateX(-50%) translateY(0) scale(1.5); }
     }
 
     /* ===== 全屏加载页（画面中央） ===== */
