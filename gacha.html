@@ -7,14 +7,18 @@
   <style>
     :root{
       --overlap:14px;
-      --sticker-space: clamp(120px, 22vw, 160px);
-      --sticker-scale: 1.1;
+      --sticker-space: clamp(120px, 22vw, 160px); /* 贴纸顶部预留空间 */
     }
     body{
       background:#000; color:#fff; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
       text-align:center; margin:0; padding:24px 12px;
     }
-    .card{ background:#111; margin: calc(16px + var(--sticker-space)) auto 24px; padding:16px; border-radius:12px; max-width:420px; }
+    /* 投稿卡片整体下移，给贴纸留空间 */
+    .card{
+      background:#111;
+      margin: calc(16px + var(--sticker-space)) auto 24px;
+      padding:16px; border-radius:12px; max-width:420px;
+    }
     .card img{ max-width:100%; border-radius:8px; }
     button{
       background:#f2c94c; border:none; padding:10px 20px; border-radius:8px;
@@ -27,7 +31,7 @@
     #sticker{
       position:absolute;
       left:50%;
-      transform:translateX(-50%) scale(var(--sticker-scale));
+      transform:translateX(-50%);
       top:-30vh;
       width:clamp(90px,18vw,140px);
       z-index:10;
@@ -35,32 +39,59 @@
       opacity:0;
     }
     #sticker.drop{
-      animation: stickerDrop 0.85s cubic-bezier(.22,.85,.34,1) forwards,
-                 stickerBounce 0.25s 0.85s ease-out forwards;
+      animation:
+        stickerDrop 0.85s cubic-bezier(.22,.85,.34,1) forwards,
+        stickerBounce 0.22s 0.85s ease-out forwards;
     }
     @keyframes stickerDrop{
       from{ top:-30vh; opacity:0; }
       to  { top: var(--sticker-end, 0px); opacity:1; }
     }
     @keyframes stickerBounce{
-      0%   { transform:translateX(-50%) translateY(0) scale(var(--sticker-scale)); }
-      60%  { transform:translateX(-50%) translateY(-8px) scale(var(--sticker-scale)); }
-      100% { transform:translateX(-50%) translateY(0) scale(var(--sticker-scale)); }
+      0%   { transform:translateX(-50%) translateY(0); }
+      60%  { transform:translateX(-50%) translateY(-6px); }
+      100% { transform:translateX(-50%) translateY(0); }
     }
-    /* 无限上下浮动 */
-    #sticker.float{
-      animation: stickerFloat 3s ease-in-out infinite;
+
+    /* ===== 全屏加载页（画面中央） ===== */
+    #loading-overlay{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;                /* 初始显示 */
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      z-index: 2000;
     }
-    @keyframes stickerFloat{
-      0%   { transform:translateX(-50%) translateY(0) scale(var(--sticker-scale)); }
-      50%  { transform:translateX(-50%) translateY(-6px) scale(var(--sticker-scale)); }
-      100% { transform:translateX(-50%) translateY(0) scale(var(--sticker-scale)); }
+    #loading-overlay .spinner{
+      width: clamp(100px, 28vw, 160px);
+      height: auto;
+      animation: spin 1.2s linear infinite;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+    }
+    #loading-overlay .label{
+      font-size: 18px;
+      color: #fff;
+      letter-spacing: .05em;
+      opacity: .9;
+    }
+    @keyframes spin{
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
 
-  <div class="card" id="result">読み込み中...</div>
+  <!-- 全屏加载页：与投稿/贴纸完全独立 -->
+  <div id="loading-overlay">
+    <img class="spinner" src="./assets/ui/gacha-machine.png" alt="gacha machine">
+    <div class="label">ガチャ中……</div>
+  </div>
+
+  <div class="card" id="result"></div>
 
   <button onclick="location.href='https://docs.google.com/forms/...yourFormURL...'">もう一度投稿する</button>
 
@@ -86,6 +117,7 @@
       return `./assets/stickers/${s}/sticker-${two}.png`;
     }
 
+    /* 第一次彩纸：两侧喷（保持原样） */
     function fireConfetti() {
       const duration = 1500;
       const end = Date.now() + duration;
@@ -96,6 +128,7 @@
       })();
     }
 
+    /* 第二次彩纸：从顶部飘落（尺寸/密度/颜色不变） */
     function fireConfettiTop() {
       const duration = 1200;
       const end = Date.now() + duration;
@@ -109,29 +142,22 @@
       })();
     }
 
+    /* 贴纸：预加载 + 掉落到预定位置 */
     function runStickerSequence() {
       const imgEl = document.getElementById("sticker");
       const path = randomStickerPath(spot);
       const pre = new Image();
       pre.onload = () => {
         imgEl.src = path;
-        // 落点：距离顶部 60px（可调整）+ 重叠偏移
+        // 落点：距离顶部 60px（可调整） - 轻微重叠
         const endPx = 60 - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--overlap'));
         imgEl.style.setProperty('--sticker-end', endPx + 'px');
-
-        // 播放掉落动画
-        imgEl.classList.remove('drop','float');
-        void imgEl.offsetWidth;
+        imgEl.classList.remove('drop');
+        void imgEl.offsetWidth;  // 允许重复播放
         imgEl.classList.add('drop');
-
-        // 在回弹动画结束后，保持贴纸并启动浮动
-        imgEl.addEventListener('animationend', (e) => {
-          if(e.animationName === 'stickerBounce'){
-            imgEl.classList.remove('drop');
-            imgEl.classList.add('float');
-            fireConfettiTop();
-          }
-        }, {once:false});
+        imgEl.addEventListener('animationend', () => {
+          fireConfettiTop();
+        }, { once:true });
       };
       pre.onerror = () => fireConfettiTop();
       pre.src = path;
@@ -140,7 +166,9 @@
     async function getOne() {
       const result = document.getElementById("result");
       const error  = document.getElementById("error");
-      result.textContent = "読み込み中...";
+
+      // 进入时保持 loading-overlay 显示
+      document.getElementById("loading-overlay").style.display = "flex";
       error.textContent = "";
 
       try {
@@ -152,6 +180,10 @@
           let list = j.data.filter(x => !sid || x.id !== sid);
           if (list.length === 0) list = j.data;
           const one = list[Math.floor(Math.random() * list.length)];
+
+          // 数据已到：隐藏加载页
+          document.getElementById("loading-overlay").style.display = "none";
+
           result.innerHTML = `
             <p><img src="${one.img}" alt="post photo"></p>
             <p>${one.text ? one.text : "(no text)"}</p>
@@ -159,9 +191,11 @@
           fireConfetti();
           runStickerSequence();
         } else {
+          document.getElementById("loading-overlay").style.display = "none";
           error.textContent = "データ取得エラー: " + JSON.stringify(j);
         }
       } catch (err) {
+        document.getElementById("loading-overlay").style.display = "none";
         console.error(err);
         error.textContent = "ネットワークエラー: データを取得できません";
       }
